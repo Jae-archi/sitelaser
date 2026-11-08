@@ -233,7 +233,7 @@ elif _sl_cmd == "from_terrain":
 elif _sl_cmd == "sheets":
     if _sl_project is None:
         raise RuntimeError("먼저 프로젝트를 생성하세요.")
-    _sl_next = _sl_api.sheets(_sl_project)
+    _sl_next = _sl_api.sheets(_sl_project, _sl_a.get("style"))
 
 _sl_serialized = json.dumps(
     _sl_next,

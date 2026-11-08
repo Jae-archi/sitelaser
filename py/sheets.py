@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import io
 import math
+import re
 from collections.abc import Mapping
 
 import ezdxf
@@ -169,6 +170,35 @@ def _validated_path(path, closed):
     return result
 
 
+# Export line style, set per render_sheets() call (from the export screen).
+DEFAULT_STYLE = {"cut_color": "#ff0000", "engrave_color": "#0000ff", "line_width_mm": 0.1}
+_style = dict(DEFAULT_STYLE)
+
+
+def _validated_style(style):
+    out = dict(DEFAULT_STYLE)
+    for key in ("cut_color", "engrave_color"):
+        value = (style or {}).get(key, out[key])
+        if not (isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value)):
+            raise ValueError("선 색상은 #RRGGBB 형식이어야 합니다.")
+        out[key] = value.lower()
+    width = number((style or {}).get("line_width_mm", out["line_width_mm"]), "선 굵기")
+    if not 0.001 <= width <= 2:
+        raise ValueError("선 굵기는 0.001~2 mm 범위여야 합니다.")
+    out["line_width_mm"] = width
+    return out
+
+
+def _rgb(hex_color):
+    return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _lineweight(mm):
+    # DXF lineweights are fixed values in 1/100 mm; pick the nearest.
+    allowed = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200]
+    return min(allowed, key=lambda v: abs(v - mm * 100))
+
+
 def _svg(cut, engrave, layout, label):
     width, height = layout["width"], layout["height"]
     parts = [
@@ -179,12 +209,12 @@ def _svg(cut, engrave, layout, label):
     ]
     # Only CUT and ENGRAVE groups contain manufacturing paths.
     for name, color, paths in (
-        ("CUT", "#dc3434", cut),
-        ("ENGRAVE", "#285cd2", engrave),
+        ("CUT", _style["cut_color"], cut),
+        ("ENGRAVE", _style["engrave_color"], engrave),
     ):
         parts.append(
             f'<g id="{name}" data-layer="{name}" fill="none" '
-            f'stroke="{color}" stroke-width="0.1">'
+            f'stroke="{color}" stroke-width="{_style["line_width_mm"]:g}">'
         )
         for path in paths:
             points = " ".join(
@@ -207,8 +237,11 @@ def _dxf(cut, engrave, label):
     doc = ezdxf.new("R2010")
     doc.units = 4
     doc.header["$MEASUREMENT"] = 1
-    doc.layers.new("CUT", dxfattribs={"color": 1})
-    doc.layers.new("ENGRAVE", dxfattribs={"color": 5})
+    lw = _lineweight(_style["line_width_mm"])
+    doc.header["$LWDISPLAY"] = 1
+    for name, key in (("CUT", "cut_color"), ("ENGRAVE", "engrave_color")):
+        layer = doc.layers.new(name, dxfattribs={"lineweight": lw})
+        layer.rgb = _rgb(_style[key])  # true colour, as the laser software expects
     doc.layers.new("LABELS_NO_CUT", dxfattribs={"color": 7})
     model = doc.modelspace()
     for name, paths in (("CUT", cut), ("ENGRAVE", engrave)):
@@ -229,7 +262,9 @@ def _dxf(cut, engrave, label):
     return stream.getvalue()
 
 
-def render_sheets(project):
+def render_sheets(project, style=None):
+    global _style
+    _style = _validated_style(style)
     if not isinstance(project, Mapping):
         raise ValueError("project는 객체여야 합니다.")
     settings = validate_settings(project["settings"])

@@ -14,7 +14,7 @@
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261108g">
+  <link rel="stylesheet" href="./style.css?v=20261108l">
 
   <script type="importmap">
   {
@@ -90,6 +90,7 @@
       <h1 id="hero-title">대지에서,<br>손에 잡히는 모형으로.</h1>
       <p class="subhead">범위를 고르고, 모형을 확인하고, 제작 파일까지.</p>
       <p class="note">입력 파일은 브라우저에서 처리합니다.</p>
+      <button id="start" type="button" class="primary start-button">시작하기 <span aria-hidden="true">›</span></button>
     </section>
 
     <h2 id="input-title" class="sr-only" tabindex="-1">지형 모형 제작</h2>
@@ -254,13 +255,13 @@
                 <option value="laser_floor">레이저 커팅 · 한 층 = 한 판</option>
               </select>
             </div>
-            <div>
+            <div id="floor-height-field" hidden>
               <label for="floor-height">층고 (m)</label>
               <input id="floor-height" type="number" min="1" max="20"
                      step="0.1" value="3" required disabled
                      aria-describedby="building-mode-note">
             </div>
-            <div>
+            <div id="building-thickness-field" hidden>
               <label for="building-thickness">건물 판 두께 (mm)</label>
               <input id="building-thickness" type="number" min="0.1" max="100"
                      step="0.1" value="1" required disabled
@@ -273,6 +274,10 @@
                      step="0.1" value="2" required
                      aria-describedby="stack-note">
             </div>
+            <label class="check-row" for="link-scale">
+              <input id="link-scale" type="checkbox" checked>
+              <span>판 두께와 높이 간격을 실제 비율로 연동 (간격 = 두께 × 축척 ÷ 1000)</span>
+            </label>
             <div>
               <label for="paper">용지</label>
               <select id="paper" aria-describedby="sheet-fit">
@@ -445,6 +450,21 @@
         건물이 없는 경우 STL은 포함되지 않습니다.<br>
         제작 전 절단선·단위·공차를 확인하세요.
       </p>
+      <fieldset class="line-style">
+        <legend>레이저 선 설정</legend>
+        <div class="line-style-grid">
+          <label for="cut-color">자르는 선 색
+            <input id="cut-color" type="color" value="#ff0000">
+          </label>
+          <label for="engrave-color">각인선 색
+            <input id="engrave-color" type="color" value="#0000ff">
+          </label>
+          <label for="line-width">선 굵기 (mm)
+            <input id="line-width" type="number" min="0.001" max="2" step="0.01" value="0.1">
+          </label>
+        </div>
+        <p class="note">레이저 프로그램은 보통 색으로 자르기·각인을 구분합니다. SVG와 DXF 모두에 적용됩니다.</p>
+      </fieldset>
       <p id="export-error" class="note error" aria-live="polite" hidden></p>
 
       <div class="section-actions">
@@ -485,7 +505,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261108g").catch(error => {
+    import("./app.js?v=20261108l").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

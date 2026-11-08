@@ -477,5 +477,5 @@ def from_terrain(dem, buildings, settings) -> Project:
     return _project(layers, normalized, cfg)
 
 
-def sheets(project):
-    return render_sheets(project)
+def sheets(project, style=None):
+    return render_sheets(project, style)

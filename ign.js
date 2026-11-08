@@ -204,12 +204,16 @@ export async function fetchBuildings(bounds, signal, progress = () => {}) {
         const rings = polygons[part];
         const h = numeric(properties.hauteur);
         const base = numeric(properties.altitude_minimale_sol);
+        const floors = numeric(properties.nombre_d_etages);
         result.push({
           id: key,
           polygon: ring2D(rings[0]),
           holes: rings.slice(1).map(ring2D),
           h: h !== null && h > 0 ? h : null,
-          base: base !== null && base > -999 ? base : null
+          base: base !== null && base > -999 ? base : null,
+          // BD TOPO: floor count (often missing) and main use, for the list
+          floors: floors !== null && floors > 0 ? Math.round(floors) : null,
+          usage: properties.usage_1 || properties.nature || ""
         });
       }
     }
@@ -530,6 +534,7 @@ export class IGNMap {
   resize() { this.map.invalidateSize(); }
 
   clearBuildings() {
+    this.focused = null;
     this.buildingGroup.clearLayers();
     this.buildings = [];
     this.polygons = [];
@@ -547,6 +552,7 @@ export class IGNMap {
         { weight: 1, bubblingMouseEvents: false }
       ).addTo(this.buildingGroup);
       polygon.on("click", () => {
+        this.onFocus?.(index);  // show which list row this is, in any mode
         if (!this.enabled || this.mode !== "building") return;
         this.toggle(index);
       });
@@ -568,11 +574,27 @@ export class IGNMap {
 
   refreshSelection() {
     this.polygons?.forEach((polygon, index) => polygon.setStyle({
-      color: this.selected.has(index) ? "#b52727" : "#62737a",
+      color: index === this.focused ? "#1d1d1f"
+        : this.selected.has(index) ? "#b52727" : "#62737a",
+      weight: index === this.focused ? 4 : 1,
       fillColor: this.selected.has(index) ? "#e04a3a" : "#9faeb3",
       fillOpacity: this.selected.has(index) ? 0.45 : 0.15
     }));
     this.onSelection(this.getSelected());
+  }
+
+  // Highlight one building (thick dark outline) and bring it into view.
+  focus(index, { zoom = true } = {}) {
+    const polygon = this.polygons?.[index];
+    if (!polygon) return;
+    this.focused = index;
+    this.refreshSelection();
+    polygon.bringToFront();
+    if (zoom) {
+      this.map.flyToBounds(polygon.getBounds(), {
+        maxZoom: 19, padding: [60, 60], duration: 0.4
+      });
+    }
   }
 
   getSelected() {

@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js?v=20261108g";
-import { Viewer3D } from "./viewer3d.js?v=20261108g";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js?v=20261108l";
+import { Viewer3D } from "./viewer3d.js?v=20261108l";
 import {
   zipSync,
   strToU8
@@ -34,9 +34,44 @@ let operationKind = "generate";
 let elapsedTimer = null;
 let startedAt = 0;
 
+// Progress: messages like "표고 850 / 1681점" give a real percentage and an
+// ETA from the measured rate; other stages show the moving (indeterminate) bar.
+let measured = null;
+let loadingOverlay = null;  // full-screen progress, created at the end of this file
+function updateProgress(message) {
+  const bar = $("#operation-progress"), fill = bar.querySelector("span");
+  const m = /([\d,]+)\s*\/\s*([\d,]+)/.exec(message);
+  if (!busy || !m) {
+    measured = null;
+    bar.classList.remove("determinate");
+    fill.style.width = "";
+    bar.removeAttribute("aria-valuenow");
+    return;
+  }
+  const done = Number(m[1].replace(/,/g, "")), total = Number(m[2].replace(/,/g, ""));
+  if (!(total > 0)) return;
+  const now = performance.now();
+  if (!measured || measured.total !== total || done < measured.done) {
+    measured = { total, done, t0: now, d0: done };
+  }
+  measured.done = done;
+  const pct = Math.min(100, Math.round(done / total * 100));
+  bar.classList.add("determinate");
+  fill.style.width = pct + "%";
+  bar.setAttribute("aria-valuemin", "0");
+  bar.setAttribute("aria-valuemax", "100");
+  bar.setAttribute("aria-valuenow", String(pct));
+  const rate = (done - measured.d0) / ((now - measured.t0) / 1000);
+  const left = rate > 0 ? Math.ceil((total - done) / rate) : null;
+  measured.label = `${pct}%` + (left !== null && done < total
+    ? ` · 약 ${left >= 60 ? Math.floor(left / 60) + "분 " : ""}${left % 60}초 남음` : "");
+}
+
 function status(message, error = false) {
   $("#status").textContent = message;
   $("#status").dataset.error = String(error);
+  updateProgress(message);
+  loadingOverlay?.message(message);
   showLocalError(
     operationKind === "buildings" ? "site-error" :
       operationKind === "export" ? "export-error" : "generation-error",
@@ -52,7 +87,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261108g", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261108l", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -156,12 +191,37 @@ function settings() {
 }
 
 // Building board thickness only matters for laser-cut buildings.
-$("#building-mode").addEventListener("change", () => {
+// Show only the fields that apply: board thickness for "laser",
+// floor height for the two per-floor modes.
+function syncBuildingFields() {
   const mode = $("#building-mode").value;
-  $("#building-thickness").disabled = mode !== "laser";
-  $("#floor-height").disabled = !mode.endsWith("_floor");
-  invalidate();
-});
+  const board = mode === "laser", perFloor = mode.endsWith("_floor");
+  $("#building-thickness-field").hidden = !board;
+  $("#building-thickness").disabled = !board;
+  $("#floor-height-field").hidden = !perFloor;
+  $("#floor-height").disabled = !perFloor;
+}
+$("#building-mode").addEventListener("change", () => { syncBuildingFields(); invalidate(); });
+syncBuildingFields();
+
+// True-scale link: interval (m) = plate thickness (mm) × scale / 1000.
+function linkFrom(source) {
+  if (!$("#link-scale").checked) return;
+  const scale = Number($("#scale").value), t = Number($("#thickness").value);
+  const iv = Number($("#interval").value);
+  if (!(scale > 0)) return;
+  if (source === "interval" && iv > 0) {
+    $("#thickness").value = +(iv * 1000 / scale).toFixed(2);
+  } else if (t > 0) {
+    $("#interval").value = +(t * scale / 1000).toFixed(2);
+  }
+  updateSettingsNotes();
+}
+$("#thickness").addEventListener("input", () => linkFrom("thickness"));
+$("#scale").addEventListener("input", () => linkFrom("scale"));
+$("#interval").addEventListener("input", () => linkFrom("interval"));
+$("#link-scale").addEventListener("change", () => { linkFrom("thickness"); invalidate(); });
+queueMicrotask(() => linkFrom("thickness"));  // after module init
 $("#building-thickness").addEventListener("change", () => invalidate());
 $("#floor-height").addEventListener("change", () => invalidate());
 
@@ -269,6 +329,7 @@ function cancelSearch() {
 
 function setBusy(value) {
   busy = value;
+  loadingOverlay?.busy(value);
   $("#input-controls").disabled = value;
   $("#cancel").disabled = !value;
   $("#export").disabled = value || !project;
@@ -280,8 +341,9 @@ function setBusy(value) {
     startedAt = performance.now();
     $("#elapsed").textContent = "0초 경과";
     elapsedTimer = setInterval(() => {
-      $("#elapsed").textContent =
-        `${Math.floor((performance.now() - startedAt) / 1000)}초 경과`;
+      const secs = Math.floor((performance.now() - startedAt) / 1000);
+      $("#elapsed").textContent = measured?.label
+        ? `${measured.label} · ${secs}초 경과` : `${secs}초 경과`;
     }, 1000);
   }
   syncSteps();
@@ -333,7 +395,7 @@ const ignMap = new IGNMap($("#map"), {
   onSelection(selected) {
     $("#building-note").textContent =
       `${ignMap.buildings.length}개 중 ${selected.length}개 선택`;
-    for (const checkbox of $("#building-list").querySelectorAll("input")) {
+    for (const checkbox of $("#building-list").querySelectorAll('input[type="checkbox"]')) {
       checkbox.checked = ignMap.selected.has(Number(checkbox.dataset.index));
     }
     invalidate();
@@ -464,26 +526,89 @@ function updateMapStyle() {
 $("#map-style").onchange = updateMapStyle;
 $("#photo-opacity").oninput = updateMapStyle;
 
+const floorHeight = () => Number($("#floor-height").value) || 3;
+
+// "높이 23.6 m · 8층" — IGN floor count when known, otherwise estimated (약).
+function buildingText(building, index) {
+  const name = `건물 ${index + 1}${building.usage ? " · " + building.usage : ""}`;
+  if (building.h === null) return `${name} · 높이 없음`;
+  const floors = building.floors
+    ? `${building.floors}층`
+    : `약 ${Math.max(1, Math.round(building.h / floorHeight()))}층`;
+  const manual = building.manualFloors ? " (직접 입력)" : "";
+  return `${name} · 높이 ${building.h.toFixed(1)} m · ${floors}${manual}`;
+}
+
 function renderBuildingList() {
   const fragment = document.createDocumentFragment();
   ignMap.buildings.forEach((building, index) => {
+    const row = document.createElement("div");
+    row.className = "building-row";
+    row.dataset.index = String(index);
+
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.dataset.index = String(index);
     input.checked = ignMap.selected.has(index);
+    input.setAttribute("aria-label", `건물 ${index + 1} 포함`);
     input.onchange = () => ignMap.toggle(index);
-
     const text = document.createElement("span");
-    text.textContent = `건물 ${index + 1} · ` +
-      (building.h === null
-        ? "높이 없음 — 모형에서 제외됨"
-        : `높이 ${building.h.toFixed(1)} m`);
+    text.textContent = buildingText(building, index);
     label.append(input, text);
-    fragment.append(label);
+
+    // Locate: highlight on the map and zoom to it.
+    const locate = document.createElement("button");
+    locate.type = "button";
+    locate.className = "building-locate";
+    locate.textContent = "지도에서 보기 ›";
+    locate.onclick = () => focusBuilding(index, true);
+    row.append(label, locate);
+
+    // Missing height: let the user type the floor count; h = floors × 층고.
+    if (building.h === null || building.manualFloors) {
+      const wrap = document.createElement("span");
+      wrap.className = "building-floors";
+      const floorsInput = document.createElement("input");
+      floorsInput.type = "number";
+      floorsInput.min = "1"; floorsInput.max = "200"; floorsInput.step = "1";
+      floorsInput.placeholder = "층수";
+      floorsInput.value = building.manualFloors || "";
+      floorsInput.setAttribute("aria-label", `건물 ${index + 1} 층수 입력`);
+      floorsInput.onchange = () => {
+        const n = Math.round(Number(floorsInput.value));
+        if (n >= 1) {
+          building.manualFloors = n;
+          building.floors = n;
+          building.h = n * floorHeight();
+        } else {
+          building.manualFloors = null;
+          building.floors = null;
+          building.h = null;
+        }
+        text.textContent = buildingText(building, index);
+        invalidate();
+      };
+      const unit = document.createElement("span");
+      unit.textContent = "층";
+      wrap.append(floorsInput, unit);
+      row.append(wrap);
+    }
+    fragment.append(row);
   });
   $("#building-list").replaceChildren(fragment);
 }
+
+function focusBuilding(index, zoom) {
+  ignMap.focus(index, { zoom });
+  for (const row of $("#building-list").querySelectorAll(".building-row")) {
+    row.classList.toggle("is-focused", row.dataset.index === String(index));
+  }
+  const row = $("#building-list").querySelector(`.building-row[data-index="${index}"]`);
+  row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+// Clicking a building on the map shows its row in the list.
+ignMap.onFocus = index => focusBuilding(index, false);
 
 async function loadBuildings(signal) {
   if (!ignMap.bounds) throw new Error("지도에서 범위를 먼저 선택하세요.");
@@ -894,6 +1019,14 @@ function download(bytes, name) {
 
 $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   if (!project || !sheetFiles) throw new Error("먼저 지형판을 생성하세요.");
+  // Re-render the sheets with the chosen cut/engrave colours and line width.
+  status("선 색상과 굵기를 적용합니다.");
+  sheetFiles = await python.call("sheets", { style: {
+    cut_color: $("#cut-color").value,
+    engrave_color: $("#engrave-color").value,
+    line_width_mm: Number($("#line-width").value)
+  } });
+  ensureCurrent();
   status("3DM과 ZIP을 준비합니다.");
   const rhino = await rhinoEngine();
   ensureCurrent();
@@ -1012,22 +1145,25 @@ function syncSteps() {
   }
 }
 
+// One screen at a time: page 0 = intro, 1-4 = steps (no long scroll).
+function showPage(page) {
+  document.body.dataset.page = String(page);
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 function showStep(step, focus = false) {
   currentStep = step;
+  showPage(step);
   syncSteps();
+  // The scroll-reveal fade never fires for a panel that was display:none.
+  $("#step-panel-" + step).classList.remove("reveal-pending");
   if (step === 1 && source === "ign") {
-    requestAnimationFrame(() => ignMap.resize());
+    // map container just became visible: let Leaflet re-measure it
+    setTimeout(() => ignMap.resize(), 50);
   }
+  if (step === 3) setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
   if (focus) {
-    const panel = $("#step-panel-" + step);
-    panel.classList.remove("reveal-pending");
-    const title = $("#step-title-" + step);
-    title.focus({ preventScroll: true });
-    title.scrollIntoView({
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto" : "smooth",
-      block: "start"
-    });
+    $("#step-title-" + step).focus({ preventScroll: true });
   }
 }
 
@@ -1236,4 +1372,102 @@ function setupInterface() {
   stage.addEventListener("dblclick", reset);
   // New plate selected or regenerated → back to fit.
   img.addEventListener("load", reset);
+})();
+
+
+// Intro screen first; "시작하기" opens step 1.
+showPage(0);
+$("#start").addEventListener("click", () => showStep(1, true));
+$("#brand-home")?.addEventListener("click", event => { event.preventDefault(); showPage(0); });
+
+
+// ---------------------------------------------------------------------
+// Full-screen loading: one big overall percentage and a plain-language
+// stage name instead of engine messages. Each stage owns a slice of
+// 0-100 %; measured messages ("850 / 1681") fill their slice exactly,
+// the others creep toward the end of their slice so it never looks frozen.
+loadingOverlay = (() => {
+  const el = document.createElement("div");
+  el.className = "loading-overlay";
+  el.hidden = true;
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-modal", "true");
+  el.setAttribute("aria-label", "처리 중");
+  el.innerHTML =
+    '<div class="loading-box">' +
+    '<p class="loading-percent" aria-live="polite">0%</p>' +
+    '<div class="loading-track"><span></span></div>' +
+    '<p class="loading-stage">준비 중</p>' +
+    '<p class="loading-eta"></p>' +
+    '<button type="button" class="loading-cancel">취소</button>' +
+    '</div>';
+  document.body.append(el);
+  const pctEl = el.querySelector(".loading-percent");
+  const fill = el.querySelector(".loading-track span");
+  const stageEl = el.querySelector(".loading-stage");
+  const etaEl = el.querySelector(".loading-eta");
+  el.querySelector(".loading-cancel").onclick = () => $("#cancel").click();
+
+  // [test, label, from %, to %] per operation kind
+  const STAGES = {
+    generate: [
+      [/표고|DEM|높이를? 조회|지형 데이터/, "지형 높이를 불러오는 중", 3, 65],
+      [/Python|numpy|DXF 라이브러리|모듈|엔진|실행 환경/, "계산 준비 중", 65, 78],
+      [/파일을? 읽|해석|불러온 파일/, "도면 파일을 읽는 중", 65, 80],
+      [/SVG|DXF를|도면/, "제작 도면을 만드는 중", 90, 99],
+      [/지형판|계산|생성/, "지형판을 계산하는 중", 78, 90]
+    ],
+    buildings: [[/./, "건물 정보를 불러오는 중", 5, 95]],
+    export: [
+      [/선 색상|굵기/, "도면 선을 정리하는 중", 5, 45],
+      [/3DM|ZIP|압축/, "파일을 묶는 중", 45, 98]
+    ]
+  };
+  let shown = 0, target = 0, cap = 0, timer = null, active = false;
+  const render = () => {
+    pctEl.textContent = Math.floor(shown) + "%";
+    fill.style.width = shown + "%";
+  };
+  const tick = () => {
+    // ease toward the measured target, and creep toward the stage cap
+    if (target > shown) shown += Math.max(0.4, (target - shown) * 0.25);
+    else if (shown < cap - 0.5) shown += (cap - shown) * 0.02;
+    shown = Math.min(shown, 99);
+    render();
+  };
+  return {
+    busy(value) {
+      active = value;
+      clearInterval(timer);
+      if (value) {
+        shown = 0; target = 0; cap = 8; etaEl.textContent = "";
+        stageEl.textContent = "준비 중";
+        render();
+        el.hidden = false;
+        document.body.classList.add("is-loading");
+        timer = setInterval(tick, 200);
+      } else {
+        shown = 100; render();
+        setTimeout(() => { if (!active) { el.hidden = true; document.body.classList.remove("is-loading"); } }, 250);
+      }
+    },
+    message(message) {
+      if (!active) return;
+      const list = STAGES[operationKind] || STAGES.generate;
+      const stage = list.find(([test]) => test.test(message));
+      if (!stage) return;
+      const [, label, from, to] = stage;
+      stageEl.textContent = label;
+      const m = /([\d,]+)\s*\/\s*([\d,]+)/.exec(message);
+      if (m) {
+        const done = Number(m[1].replace(/,/g, "")), total = Number(m[2].replace(/,/g, ""));
+        if (total > 0) target = Math.max(target, from + (to - from) * Math.min(1, done / total));
+        etaEl.textContent = measured?.label?.split(" · ").slice(1).join(" · ") || "";
+      } else {
+        target = Math.max(target, from);
+        etaEl.textContent = "";
+      }
+      cap = Math.max(cap, to);
+    }
+  };
 })();

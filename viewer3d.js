@@ -187,16 +187,30 @@ export class Viewer3D {
         }
       });
 
+      // Show buildings split the way they will be made: per storey for the
+      // *_floor modes, per board for "laser", whole for "print".
+      const s = project.settings || {};
+      const mode = s.building_mode || "print";
+      const floorH = s.floor_height_m || 3;
+      const boardM = (s.building_thickness_mm || 1) * (s.scale || 1000) / 1000;
       project.buildings.forEach((building, index) => {
         const base = this.stackBase(building.base);
-        const mesh = this.addMesh(
-          buildingShape(building, this.origin),
-          building.h,
-          base,
-          0xe6e3da,
-          `building_${index + 1}`
-        );
-        this.buildings.push(mesh);
+        let n = 1;
+        if (mode.endsWith("_floor")) n = Math.max(1, Math.round(building.h / floorH));
+        else if (mode === "laser") n = Math.max(1, Math.ceil(building.h / boardM - 1e-6));
+        const step = mode === "laser" ? boardM : building.h / n;
+        for (let k = 0; k < n; k++) {
+          const depth = Math.min(step, building.h - k * step);
+          if (depth <= 0) break;
+          const mesh = this.addMesh(
+            buildingShape(building, this.origin),
+            depth,
+            base + k * step,
+            k % 2 ? 0xdcd8cc : 0xe9e6dc,   // alternate shades show each piece
+            n > 1 ? `building_${index + 1}_${k + 1}` : `building_${index + 1}`
+          );
+          this.buildings.push(mesh);
+        }
       });
       this.options.count = this.layers.length;
       this.setOptions(this.options);
