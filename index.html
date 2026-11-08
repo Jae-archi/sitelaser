@@ -14,7 +14,7 @@
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261108l">
+  <link rel="stylesheet" href="./style.css?v=20261108n">
 
   <script type="importmap">
   {
@@ -267,7 +267,7 @@
                      step="0.1" value="1" required disabled
                      aria-describedby="building-mode-note">
             </div>
-            <p id="building-mode-note" class="field-note">통째로: buildings.stl 하나 · 층별로: 층마다 STL(buildings_floor_XX) · 판 두께 지정: 건물 판 두께로 나눈 도면 · 한 층 = 한 판: 층고를 축척에 맞춘 두께로 층마다 도면(building_XX).</p>
+            <p id="building-mode-note" class="field-note">통째로: buildings.stl 하나 · 층별로: 층마다 STL(buildings_floor_XX) · 판 두께 지정: 건물 판 두께로 나눈 도면 · 한 층 = 한 판: 층고를 축척에 맞춘 같은 두께의 판으로 층마다 도면(building_XX). 층고가 높은 건물(예: 1층 12 m)은 여러 장을 쌓습니다. 층별 3D 프린트는 IGN 실제 층수로 나눕니다.</p>
             <div>
               <label for="interval">지형 높이 간격 (m)</label>
               <input id="interval" type="number" min="0.1" max="1000"
@@ -505,7 +505,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261108l").catch(error => {
+    import("./app.js?v=20261108n").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

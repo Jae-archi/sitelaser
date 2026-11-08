@@ -212,7 +212,12 @@ export async function fetchBuildings(bounds, signal, progress = () => {}) {
           h: h !== null && h > 0 ? h : null,
           base: base !== null && base > -999 ? base : null,
           // BD TOPO: floor count (often missing) and main use, for the list
-          floors: floors !== null && floors > 0 ? Math.round(floors) : null,
+          // Trust the IGN storey count only if it gives a plausible
+          // 2.2-6 m storey; otherwise keep it as ignFloors (flagged) and
+          // let the 층고 estimate / user input decide.
+          floors: floors > 0 && h > 0 && h / floors >= 2.2 && h / floors <= 6
+            ? Math.round(floors) : null,
+          ignFloors: floors > 0 ? Math.round(floors) : null,
           usage: properties.usage_1 || properties.nature || ""
         });
       }
@@ -302,7 +307,9 @@ export async function fetchTerrain(
     polygon: building.polygon,
     holes: building.holes,
     h: building.h,
-    base: building.base
+    base: building.base,
+    // IGN (or user-typed) storey count; null = estimate from 층고
+    ...(building.floors ? { floors: building.floors } : {})
   }));
 
   const missing = outputBuildings

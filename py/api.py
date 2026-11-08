@@ -302,6 +302,7 @@ def _buildings(items, factor, base_at):
             "polygon": [list(p) for p in polygon.exterior.coords],
             "holes": [[list(p) for p in r.coords] for r in polygon.interiors],
             "h": height,
+            **({"floors": int(item["floors"])} if item.get("floors") else {}),
             "base": base,
         })
     return result

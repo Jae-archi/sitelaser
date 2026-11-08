@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js?v=20261108l";
-import { Viewer3D } from "./viewer3d.js?v=20261108l";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js?v=20261108n";
+import { Viewer3D } from "./viewer3d.js?v=20261108n";
 import {
   zipSync,
   strToU8
@@ -87,7 +87,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261108l", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261108n", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -536,7 +536,10 @@ function buildingText(building, index) {
     ? `${building.floors}층`
     : `약 ${Math.max(1, Math.round(building.h / floorHeight()))}층`;
   const manual = building.manualFloors ? " (직접 입력)" : "";
-  return `${name} · 높이 ${building.h.toFixed(1)} m · ${floors}${manual}`;
+  // IGN storey count that gives an implausible storey height is flagged.
+  const doubt = !building.manualFloors && !building.floors && building.ignFloors
+    ? ` · IGN ${building.ignFloors}층 (의심)` : "";
+  return `${name} · 높이 ${building.h.toFixed(1)} m · ${floors}${doubt}${manual}`;
 }
 
 function renderBuildingList() {
@@ -566,7 +569,7 @@ function renderBuildingList() {
     row.append(label, locate);
 
     // Missing height: let the user type the floor count; h = floors × 층고.
-    if (building.h === null || building.manualFloors) {
+    if (building.h === null || building.manualFloors || (building.ignFloors && !building.floors)) {
       const wrap = document.createElement("span");
       wrap.className = "building-floors";
       const floorsInput = document.createElement("input");
@@ -577,14 +580,16 @@ function renderBuildingList() {
       floorsInput.setAttribute("aria-label", `건물 ${index + 1} 층수 입력`);
       floorsInput.onchange = () => {
         const n = Math.round(Number(floorsInput.value));
+        if (building.measuredH === undefined) building.measuredH = building.h;
         if (n >= 1) {
           building.manualFloors = n;
           building.floors = n;
-          building.h = n * floorHeight();
+          // keep IGN's measured height when there is one; else floors × 층고
+          building.h = building.measuredH ?? n * floorHeight();
         } else {
           building.manualFloors = null;
           building.floors = null;
-          building.h = null;
+          building.h = building.measuredH;
         }
         text.textContent = buildingText(building, index);
         invalidate();

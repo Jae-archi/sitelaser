@@ -196,7 +196,10 @@ export class Viewer3D {
       project.buildings.forEach((building, index) => {
         const base = this.stackBase(building.base);
         let n = 1;
-        if (mode.endsWith("_floor")) n = Math.max(1, Math.round(building.h / floorH));
+        // print_floor: real storeys (IGN count) when known, else h / 층고.
+        // laser_floor: equal boards of 층고, so a tall single storey is stacked.
+        if (mode === "print_floor") n = building.floors || Math.max(1, Math.round(building.h / floorH));
+        else if (mode === "laser_floor") n = Math.max(1, Math.round(building.h / floorH));
         else if (mode === "laser") n = Math.max(1, Math.ceil(building.h / boardM - 1e-6));
         const step = mode === "laser" ? boardM : building.h / n;
         for (let k = 0; k < n; k++) {
@@ -292,7 +295,8 @@ export class Viewer3D {
     const scale = 1000 / this.project.settings.scale;
     const floors = new Map();
     this.project.buildings.forEach(building => {
-      const n = Math.max(1, Math.round(building.h / floorHeight));
+      // real storey count from IGN when known (12.2 m single storey = 1 piece)
+      const n = building.floors || Math.max(1, Math.round(building.h / floorHeight));
       const step = building.h / n;  // even storeys that add up to h
       const base = this.stackBase(building.base);
       for (let k = 0; k < n; k++) {
