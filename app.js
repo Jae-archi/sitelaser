@@ -28,10 +28,20 @@ let searchNumber = 0;
 let searchTimer = null;
 let rhinoPromise = null;
 let viewer = null;
+let currentStep = 1;
+const completedSteps = new Set();
+let operationKind = "generate";
+let elapsedTimer = null;
+let startedAt = 0;
 
 function status(message, error = false) {
   $("#status").textContent = message;
   $("#status").dataset.error = String(error);
+  showLocalError(
+    operationKind === "buildings" ? "site-error" :
+      operationKind === "export" ? "export-error" : "generation-error",
+    error ? message : ""
+  );
 }
 
 class PythonClient {
@@ -57,7 +67,10 @@ class PythonClient {
       this.pending = null;
       clearTimeout(pending.timeout);
 
-      if (message?.ok === true) pending.resolve(message.result);
+      if (message?.ok === true) {
+        $("#engine-state").textContent = "엔진 준비됨";
+        pending.resolve(message.result);
+      }
       else pending.reject(new Error(message?.error || "Python 응답 오류"));
     };
 
@@ -93,6 +106,7 @@ class PythonClient {
   reset(error = new DOMException("취소되었습니다.", "AbortError")) {
     this.worker?.terminate();
     this.worker = null;
+    $("#engine-state").textContent = "엔진 준비 중 · 다음 생성 시 다시 시작";
     if (this.pending) {
       clearTimeout(this.pending.timeout);
       this.pending.reject(error);
@@ -202,6 +216,9 @@ function invalidate() {
   $("#layer-slider").value = "0";
   $("#layer-count").textContent = "0 / 0";
   viewer?.clear();
+  for (const step of [2, 3, 4]) completedSteps.delete(step);
+  if (currentStep > 2) showStep(2);
+  else syncSteps();
 }
 
 function cancelSearch() {
@@ -217,10 +234,24 @@ function setBusy(value) {
   $("#cancel").disabled = !value;
   $("#export").disabled = value || !project;
   ignMap.setEnabled(!value);
+  $("#operation-progress").hidden = !value;
+  $("#elapsed").hidden = !value;
+  clearInterval(elapsedTimer);
+  if (value) {
+    startedAt = performance.now();
+    $("#elapsed").textContent = "0초 경과";
+    elapsedTimer = setInterval(() => {
+      $("#elapsed").textContent =
+        `${Math.floor((performance.now() - startedAt) / 1000)}초 경과`;
+    }, 1000);
+  }
+  syncSteps();
 }
 
-async function operation(task) {
+async function operation(task, kind = "generate") {
   if (busy) return;
+  operationKind = kind;
+  showLocalError("generation-error", "");
   cancelSearch();
   const number = ++operationNumber;
   const controller = new AbortController();
@@ -428,7 +459,7 @@ $("#load-buildings").onclick = () => operation(async signal => {
   await loadBuildings(signal);
   setMapMode("building");
   status("건물 조회가 끝났습니다. 포함할 건물을 선택하세요.");
-});
+}, "buildings");
 $("#select-all").onclick = () => ignMap.selectAll(true);
 $("#select-none").onclick = () => ignMap.selectAll(false);
 
@@ -789,6 +820,9 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     showPlate();
     updateSettingsNotes();
     status(`지형판 ${project.layers.length}장과 건물 ${project.buildings.length}개를 생성했습니다.${skippedNote}`);
+    completedSteps.add(1);
+    completedSteps.add(2);
+    showStep(3, true);
   } catch (error) {
     // Do not clear a newer operation's result after cancellation.
     if (!signal.aborted) invalidate();
@@ -860,7 +894,9 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   ensureCurrent();
   download(archive, "sitelaser.zip");
   status("ZIP 다운로드를 시작했습니다.");
-});
+  completedSteps.add(4);
+  syncSteps();
+}, "export");
 
 $("#cancel").onclick = () => {
   operationNumber++;
@@ -873,6 +909,7 @@ $("#cancel").onclick = () => {
 };
 
 window.addEventListener("beforeunload", () => {
+  clearInterval(elapsedTimer);
   operationController?.abort();
   searchController?.abort();
   python.reset();
@@ -882,3 +919,140 @@ window.addEventListener("beforeunload", () => {
 
 updateSettingsNotes();
 status("준비되었습니다. 지도에서 범위를 선택하거나 파일을 업로드하세요.");
+setupInterface();
+
+function showLocalError(id, message) {
+  for (const name of ["site-error", "generation-error", "export-error"]) {
+    const note = $("#" + name);
+    note.textContent = name === id ? message : "";
+    note.hidden = !note.textContent;
+  }
+}
+
+function syncSteps() {
+  $("#step-count").textContent = `단계 ${currentStep} / 4`;
+  for (const button of document.querySelectorAll("[data-step]")) {
+    const step = Number(button.dataset.step);
+    const current = step === currentStep;
+    const done = completedSteps.has(step);
+    button.dataset.done = String(done && !current);
+    button.setAttribute("aria-expanded", String(current));
+    if (current) button.setAttribute("aria-current", "step");
+    else button.removeAttribute("aria-current");
+    button.querySelector(".step-state").textContent =
+      current ? "현재" : done ? "완료" : "대기";
+    button.disabled = busy ||
+      (step === 2 && !completedSteps.has(1)) ||
+      (step === 3 && (!project || !sheetFiles)) ||
+      (step === 4 && (!project || !sheetFiles || !completedSteps.has(3)));
+  }
+}
+
+function showStep(step, focus = false) {
+  currentStep = step;
+  for (let number = 1; number <= 4; number++) {
+    $("#step-panel-" + number).hidden = number !== step;
+  }
+  syncSteps();
+  if (step === 1 && source === "ign") {
+    requestAnimationFrame(() => ignMap.resize());
+  }
+  if (focus) $("#step-title-" + step).focus();
+}
+
+function continueFromSite() {
+  if (busy) return;
+  let message = "";
+  if (source === "ign") {
+    if (!ignMap.bounds) message = "지도에서 범위를 먼저 선택하세요.";
+    else if (!buildingsReady) {
+      message = "범위 내 건물을 조회하고 포함할 건물을 선택하세요.";
+    } else if (!$("#grid-step").reportValidity()) return;
+  } else {
+    const file = $("#file").files[0];
+    if (!file || !/\.(dxf|3dm)$/i.test(file.name)) {
+      message = "DXF 또는 3DM 파일을 선택하세요.";
+    } else if (file.size === 0 || file.size > 100 * 1024 * 1024) {
+      message = "파일 크기는 0보다 크고 100 MB 이하여야 합니다.";
+    }
+  }
+  showLocalError("site-error", message);
+  if (message) return;
+  completedSteps.add(1);
+  showStep(2, true);
+}
+
+function selectView(next, focus = false) {
+  for (const button of document.querySelectorAll("[data-view]")) {
+    const selected = button.dataset.view === next;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    const panel = $("#view-panel-" + button.dataset.view);
+    panel.setAttribute("aria-hidden", String(!selected));
+    panel.inert = !selected;
+  }
+  if (focus) $("#view-tab-" + next).focus();
+}
+
+function setupInterface() {
+  for (const button of document.querySelectorAll("[data-step]")) {
+    button.onclick = () => {
+      if (busy || button.disabled) return;
+      const step = Number(button.dataset.step);
+      if (step === 2 && currentStep === 1) continueFromSite();
+      else showStep(step, true);
+    };
+  }
+  for (const button of document.querySelectorAll("[data-go-step]")) {
+    button.onclick = () => {
+      if (!busy) showStep(Number(button.dataset.goStep), true);
+    };
+  }
+  $("#site-next").onclick = continueFromSite;
+  $("#review-next").onclick = () => {
+    if (busy || !project || !sheetFiles) return;
+    completedSteps.add(3);
+    showStep(4, true);
+  };
+  $("#inspect-viewer").onclick = () => {
+    $('.viewer-tabs [aria-selected="true"]').focus();
+  };
+  for (const button of document.querySelectorAll("[data-view]")) {
+    button.onclick = () => selectView(button.dataset.view);
+    button.onkeydown = event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === "Home" ? "3d" :
+        event.key === "End" ? "2d" : button.dataset.view === "3d" ? "2d" : "3d";
+      selectView(next, true);
+    };
+  }
+  // Invalidate only step completion; the existing listeners own project data.
+  for (const id of ["file", "radius", "grid-step"]) {
+    $("#" + id).addEventListener("input", () => {
+      completedSteps.delete(1);
+      showLocalError("site-error", "");
+      syncSteps();
+    });
+  }
+  for (const button of document.querySelectorAll("[data-source]")) {
+    button.addEventListener("click", () => {
+      if (!busy) {
+        completedSteps.delete(1);
+        showLocalError("site-error", "");
+        syncSteps();
+      }
+    });
+  }
+  syncSteps();
+  selectView("3d");
+  // No worker init command is exposed by the supplied PythonClient.
+  // Start the worker early without sending an undocumented command.
+  try {
+    python.createWorker();
+    $("#engine-state").textContent = "엔진 준비 중 · 첫 생성 시 초기화 확인";
+  } catch (error) {
+    $("#engine-state").textContent =
+      "엔진 사전 준비 실패 · 생성 시 재시도: " + error.message;
+  }
+}
