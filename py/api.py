@@ -307,10 +307,36 @@ def _buildings(items, factor, base_at):
     return result
 
 
+def _clip_buildings(buildings, base):
+    """Cut building footprints at the bottom plate's outline.
+
+    Buildings that cross the site edge would overhang the physical model;
+    keep only the part over the plate. A footprint split into several parts
+    becomes several buildings with the same height and base.
+    """
+    result = []
+    for building in buildings:
+        footprint = Polygon(building["polygon"], building["holes"])
+        if not footprint.is_valid:
+            footprint = shapely.make_valid(footprint)
+        part = shapely.intersection(footprint, base, grid_size=GRID)
+        for piece in getattr(part, "geoms", [part]):
+            # drop slivers: fragments under 1% of the original footprint
+            if piece.geom_type != "Polygon" or piece.area <= footprint.area * 0.01:
+                continue
+            result.append({
+                **building,
+                "polygon": [list(c[:2]) for c in piece.exterior.coords],
+                "holes": [[list(c[:2]) for c in ring.coords] for ring in piece.interiors],
+            })
+    return result
+
+
 def _project(layer_geometries, buildings, settings, road_lines=()):
     if not layer_geometries:
         raise ValueError("생성된 판재가 없습니다.")
     base = layer_geometries[0][1]
+    buildings = _clip_buildings(buildings, base)
     marks = list(road_lines)
     for building in buildings:
         polygon = Polygon(building["polygon"], building["holes"])

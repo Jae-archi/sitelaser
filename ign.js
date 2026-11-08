@@ -107,7 +107,10 @@ function mainland(lon, lat) {
 export async function searchPlaces(query, signal) {
   const q = query.trim();
   if (q.length < 3) return [];
-  const data = await requestJSON(GEOCODE, { q, limit: 6 }, signal);
+  // index=address,poi: addresses AND named places (schools, buildings, sites).
+  const data = await requestJSON(
+    GEOCODE, { q, index: "address,poi", limit: 8 }, signal
+  );
   if (!Array.isArray(data.features)) {
     throw new Error("주소 검색 응답 형식이 올바르지 않습니다.");
   }
@@ -116,8 +119,13 @@ export async function searchPlaces(query, signal) {
     if (feature.geometry?.type !== "Point" || !coordinates) return [];
     const [lon, lat] = coordinates;
     if (!mainland(lon, lat)) return [];
+    const p = feature.properties || {};
+    const city = [p.postcode, p.city].flat().filter(Boolean)[0];
+    const label = p._type === "poi"
+      ? `${[p.toponym, p.name].flat().filter(Boolean)[0] || p.label} · 장소${city ? " · " + city : ""}`
+      : (p.label || `${lat}, ${lon}`);
     return [{
-      label: feature.properties?.label || `${lat}, ${lon}`,
+      label,
       lon,
       lat,
       l93: toL93(lon, lat)

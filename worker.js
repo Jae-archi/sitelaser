@@ -14,7 +14,8 @@ function plainJSON(value) {
 }
 
 async function readAsset(path) {
-  const response = await fetch(new URL(`./py/${path}`, self.location.href));
+  // no-cache: revalidate so a redeploy never runs stale Python modules.
+  const response = await fetch(new URL(`./py/${path}`, self.location.href), { cache: "no-cache" });
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new Error(`Python 소스를 읽지 못했습니다: ${path} (${response.status})`);

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fafafa">
-  <meta name="theme-color" content="#171717"
+  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#000000"
         media="(prefers-color-scheme: dark)">
   <title>SiteLaser · 지형 모형 제작</title>
 
@@ -14,7 +14,7 @@
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20261108g">
 
   <script type="importmap">
   {
@@ -37,77 +37,85 @@
   <a class="skip-link" href="#input-title">제작 단계로 이동</a>
 
   <header class="page-header">
-    <div>
-      <p class="eyebrow">ARCHI STUDIO</p>
-      <h1>SiteLaser</h1>
-      <p class="header-description">대지에서 제작 도면까지.</p>
+    <div class="nav-inner">
+      <a class="product-name" href="#top" aria-label="SiteLaser 처음으로">
+        SiteLaser
+      </a>
+
+      <nav class="stepper" aria-label="제작 단계">
+        <ol>
+          <li>
+            <button id="step-button-1" type="button" data-step="1"
+                    aria-controls="step-panel-1" aria-expanded="true"
+                    aria-current="step">
+              <span class="step-number" aria-hidden="true">1</span>
+              <span class="step-label">대지</span>
+              <span class="step-state">현재</span>
+            </button>
+          </li>
+          <li>
+            <button id="step-button-2" type="button" data-step="2"
+                    aria-controls="step-panel-2" aria-expanded="true" disabled>
+              <span class="step-number" aria-hidden="true">2</span>
+              <span class="step-label">설정</span>
+              <span class="step-state">대기</span>
+            </button>
+          </li>
+          <li>
+            <button id="step-button-3" type="button" data-step="3"
+                    aria-controls="step-panel-3" aria-expanded="true" disabled>
+              <span class="step-number" aria-hidden="true">3</span>
+              <span class="step-label">확인</span>
+              <span class="step-state">대기</span>
+            </button>
+          </li>
+          <li>
+            <button id="step-button-4" type="button" data-step="4"
+                    aria-controls="step-panel-4" aria-expanded="true" disabled>
+              <span class="step-number" aria-hidden="true">4</span>
+              <span class="step-label">내보내기</span>
+              <span class="step-state">대기</span>
+            </button>
+          </li>
+        </ol>
+      </nav>
+
+      <p id="step-count" class="step-count" aria-live="polite">단계 1/4</p>
     </div>
-    <span class="badge">브라우저에서 처리</span>
   </header>
 
-  <main>
-    <section class="card input-card" aria-labelledby="input-title">
-      <div class="section-heading">
-        <h2 id="input-title" tabindex="-1">지형 모형 제작</h2>
-        <p id="step-count" class="step-count" aria-live="polite">단계 1 / 4</p>
-      </div>
+  <main id="top">
+    <section class="intro" aria-labelledby="hero-title">
+      <p class="eyebrow">ARCHI STUDIO</p>
+      <h1 id="hero-title">대지에서,<br>손에 잡히는 모형으로.</h1>
+      <p class="subhead">범위를 고르고, 모형을 확인하고, 제작 파일까지.</p>
+      <p class="note">입력 파일은 브라우저에서 처리합니다.</p>
+    </section>
 
-      <fieldset id="input-controls">
-        <legend class="sr-only">입력과 제작 설정</legend>
+    <h2 id="input-title" class="sr-only" tabindex="-1">지형 모형 제작</h2>
 
-        <nav class="stepper" aria-label="제작 단계">
-          <ol>
-            <li>
-              <button id="step-button-1" type="button" data-step="1"
-                      aria-controls="step-panel-1" aria-expanded="true"
-                      aria-current="step">
-                <span class="step-number" aria-hidden="true">1</span>
-                <span class="step-label">대지</span>
-                <span class="step-state">현재</span>
-              </button>
-            </li>
-            <li>
-              <button id="step-button-2" type="button" data-step="2"
-                      aria-controls="step-panel-2" aria-expanded="false" disabled>
-                <span class="step-number" aria-hidden="true">2</span>
-                <span class="step-label">설정</span>
-                <span class="step-state">대기</span>
-              </button>
-            </li>
-            <li>
-              <button id="step-button-3" type="button" data-step="3"
-                      aria-controls="step-panel-3" aria-expanded="false" disabled>
-                <span class="step-number" aria-hidden="true">3</span>
-                <span class="step-label">확인</span>
-                <span class="step-state">대기</span>
-              </button>
-            </li>
-            <li>
-              <button id="step-button-4" type="button" data-step="4"
-                      aria-controls="step-panel-4" aria-expanded="false" disabled>
-                <span class="step-number" aria-hidden="true">4</span>
-                <span class="step-label">내보내기</span>
-                <span class="step-state">대기</span>
-              </button>
-            </li>
-          </ol>
-        </nav>
+    <fieldset id="input-controls">
+      <legend class="sr-only">입력과 제작 설정</legend>
 
-        <section id="step-panel-1" class="step-panel"
-                 aria-labelledby="step-title-1">
-          <h3 id="step-title-1" tabindex="-1">대지 선택</h3>
-          <p class="note">지도에서 범위를 정하거나 도면 파일을 불러오세요.</p>
+      <section id="step-panel-1" class="step-panel content-section"
+               aria-labelledby="step-title-1">
+        <div class="section-intro">
+          <p class="eyebrow">01 · 대지</p>
+          <h3 id="step-title-1" tabindex="-1">대지를 고르세요</h3>
+          <p class="subhead">지도에서 범위를 정하거나 도면을 불러오세요.</p>
+        </div>
 
-          <div class="tabs" role="tablist" aria-label="입력 방식">
-            <button id="tab-ign" type="button" role="tab"
-                    aria-selected="true" aria-controls="panel-ign"
-                    data-source="ign">IGN</button>
-            <button id="tab-file" type="button" role="tab"
-                    aria-selected="false" aria-controls="panel-file"
-                    tabindex="-1" data-source="file">파일 업로드</button>
-          </div>
+        <div class="tabs source-tabs" role="tablist" aria-label="입력 방식">
+          <button id="tab-ign" type="button" role="tab"
+                  aria-selected="true" aria-controls="panel-ign"
+                  data-source="ign">IGN</button>
+          <button id="tab-file" type="button" role="tab"
+                  aria-selected="false" aria-controls="panel-file"
+                  tabindex="-1" data-source="file">파일</button>
+        </div>
 
-          <section id="panel-ign" role="tabpanel" aria-labelledby="tab-ign">
+        <section id="panel-ign" role="tabpanel" aria-labelledby="tab-ign">
+          <div class="search-area">
             <label for="search">프랑스 본토 주소·장소</label>
             <div class="inline">
               <input id="search" type="search" maxlength="120"
@@ -117,94 +125,114 @@
             </div>
             <div id="suggestions" aria-label="주소 검색 결과"></div>
             <p id="search-note" class="note" aria-live="polite"></p>
+          </div>
 
-            <div class="grid two">
-              <div>
-                <label for="radius">범위 반경 (m)</label>
-                <input id="radius" type="number" min="20" max="2500"
-                       step="1" value="200" aria-describedby="range-note">
-              </div>
-              <div>
-                <label for="grid-step">표고 샘플 간격 (m)</label>
-                <input id="grid-step" type="number" min="1" max="100"
-                       step="1" value="10">
-              </div>
+          <div class="grid two">
+            <div>
+              <label for="radius">범위 반경 (m)</label>
+              <input id="radius" type="number" min="20" max="2500"
+                     step="1" value="200" aria-describedby="range-note">
             </div>
-
-            <div class="toolbar map-tools" role="group" aria-label="지도 조작">
-              <button type="button" data-map-mode="pan"
-                      aria-pressed="true">지도 이동</button>
-              <button type="button" data-map-mode="draw"
-                      aria-pressed="false">범위 그리기</button>
-              <button type="button" data-map-mode="point"
-                      aria-pressed="false">중심 찍기</button>
-              <button type="button" data-map-mode="building"
-                      aria-pressed="false">건물 선택</button>
-              <button id="range-view" type="button">범위 보기</button>
+            <div>
+              <label for="grid-step">표고 샘플 간격 (m)</label>
+              <input id="grid-step" type="number" min="1" max="100"
+                     step="1" value="10">
             </div>
+          </div>
 
-            <div class="grid two map-appearance">
-              <div>
-                <label for="map-style">배경</label>
-                <select id="map-style">
-                  <option value="plan">지도</option>
-                  <option value="photo">항공사진</option>
-                  <option value="overlay">겹쳐보기</option>
-                </select>
-              </div>
-              <div>
-                <label for="photo-opacity">사진 진하기</label>
-                <input id="photo-opacity" type="range"
-                       min="0" max="100" value="55">
-              </div>
+          <div class="toolbar map-tools" role="group" aria-label="지도 조작">
+            <button type="button" data-map-mode="pan"
+                    aria-pressed="true">지도 이동</button>
+            <button type="button" data-map-mode="draw"
+                    aria-pressed="false">범위 그리기</button>
+            <button type="button" data-map-mode="point"
+                    aria-pressed="false">중심 찍기</button>
+            <button type="button" data-map-mode="building"
+                    aria-pressed="false">건물 선택</button>
+            <button id="range-view" type="button" class="text-action">
+              범위 보기 <span aria-hidden="true">›</span>
+            </button>
+          </div>
+
+          <div class="grid two map-appearance">
+            <div>
+              <label for="map-style">배경</label>
+              <select id="map-style">
+                <option value="plan">지도</option>
+                <option value="photo">항공사진</option>
+                <option value="overlay">겹쳐보기</option>
+              </select>
             </div>
-
-            <div id="map" aria-label="IGN 지도"
-                 aria-describedby="map-note range-note"></div>
-            <p id="map-note" class="note" aria-live="polite">
-              지도 중심을 찍거나 범위를 그리세요.
-            </p>
-            <p id="range-note" class="note"></p>
-
-            <div class="toolbar building-tools">
-              <button id="load-buildings" type="button">범위 내 건물 조회</button>
-              <button id="select-all" type="button">건물 모두 선택</button>
-              <button id="select-none" type="button">건물 선택 해제</button>
+            <div>
+              <label for="photo-opacity">사진 진하기</label>
+              <input id="photo-opacity" type="range"
+                     min="0" max="100" value="55">
             </div>
-            <p id="building-note" class="note" aria-live="polite">
-              건물을 조회한 뒤 포함할 건물을 선택하세요.
-            </p>
-            <div id="building-list" class="building-list"
-                 role="group" aria-label="포함할 건물"
-                 aria-describedby="building-note"></div>
-          </section>
+          </div>
 
-          <section id="panel-file" role="tabpanel"
-                   aria-labelledby="tab-file" hidden>
-            <label for="file">DXF 또는 3DM</label>
-            <input id="file" type="file" accept=".dxf,.3dm"
-                   aria-describedby="file-help file-note">
-            <p id="file-help" class="note">
-              최대 100 MB. DXF 단위 해석은 Python 엔진이 담당합니다.
-              3DM은 파일의 단위를 m로 변환합니다.
-              3DM 입력은 폴리라인·직선·메시를 지원하며,
-              다른 객체가 있으면 누락시키지 않고 중단합니다.
-            </p>
-            <p id="file-note" class="note" aria-live="polite"></p>
-          </section>
+          <div id="map" aria-label="IGN 지도"
+               aria-describedby="map-note range-note"></div>
+          <p id="map-note" class="note" aria-live="polite">
+            지도 중심을 찍거나 범위를 그리세요.
+          </p>
+          <p id="range-note" class="note"></p>
 
-          <p id="site-error" class="note error" aria-live="polite" hidden></p>
+          <div class="toolbar building-tools">
+            <button id="load-buildings" type="button">범위 내 건물 조회</button>
+            <button id="select-all" type="button" class="text-action">
+              건물 모두 선택 <span aria-hidden="true">›</span>
+            </button>
+            <button id="select-none" type="button" class="text-action">
+              건물 선택 해제 <span aria-hidden="true">›</span>
+            </button>
+          </div>
+          <p id="building-note" class="note" aria-live="polite">
+            건물을 조회한 뒤 포함할 건물을 선택하세요.
+          </p>
+          <div id="building-list" class="building-list"
+               role="group" aria-label="포함할 건물"
+               aria-describedby="building-note"></div>
+        </section>
+
+        <section id="panel-file" role="tabpanel"
+                 aria-labelledby="tab-file" hidden>
+          <label for="file">DXF 또는 3DM</label>
+          <input id="file" type="file" accept=".dxf,.3dm"
+                 aria-describedby="file-help file-note">
+          <p id="file-help" class="note">
+            최대 100 MB. DXF는 파일에 지정된 단위를 해석하며,
+            3DM은 파일의 단위를 m로 변환합니다.
+            3DM 입력은 폴리라인·직선·메시를 지원하며,
+            다른 객체가 있으면 누락시키지 않고 중단합니다.
+          </p>
+          <p id="file-note" class="note" aria-live="polite"></p>
+        </section>
+
+        <p id="site-error" class="note error" aria-live="polite" hidden></p>
+        <div class="section-actions">
           <button id="site-next" type="button" class="primary full-width">
             다음 · 설정
           </button>
-        </section>
+        </div>
+      </section>
 
-        <section id="step-panel-2" class="step-panel"
-                 aria-labelledby="step-title-2" hidden>
-          <h3 id="step-title-2" tabindex="-1">제작 설정</h3>
-          <p class="note">축척과 재료 두께를 정하고 지형판을 생성하세요.</p>
+      <section id="step-panel-2" class="step-panel content-section"
+               aria-labelledby="step-title-2">
+        <div class="section-intro">
+          <p class="eyebrow">02 · 설정</p>
+          <h3 id="step-title-2" tabindex="-1">만들 방식을 정하세요</h3>
+          <p class="subhead">축척과 두께를 정하면 모형의 크기가 보입니다.</p>
+        </div>
 
-          <div class="grid two">
+        <p id="settings-help" class="note section-help">
+          대지 선택을 마치고 ‘다음 · 설정’을 누르면 설정할 수 있습니다.
+        </p>
+
+        <fieldset id="settings-controls" disabled
+                  aria-describedby="settings-help">
+          <legend class="sr-only">축척과 제작 재료</legend>
+
+          <div class="grid settings-grid">
             <div>
               <label for="scale">축척 1:N</label>
               <input id="scale" type="number" min="1" max="100000"
@@ -212,11 +240,33 @@
                      aria-describedby="sheet-fit">
             </div>
             <div>
-              <label for="thickness">판 두께 (mm)</label>
+              <label for="thickness">지형판 두께 (mm)</label>
               <input id="thickness" type="number" min="0.1" max="100"
                      step="0.1" value="2" required
                      aria-describedby="stack-note">
             </div>
+            <div>
+              <label for="building-mode">건물 제작 방식</label>
+              <select id="building-mode" aria-describedby="building-mode-note">
+                <option value="print">3D 프린터 · 통째로</option>
+                <option value="print_floor">3D 프린터 · 층별로 나눠서</option>
+                <option value="laser">레이저 커팅 · 판 두께 지정</option>
+                <option value="laser_floor">레이저 커팅 · 한 층 = 한 판</option>
+              </select>
+            </div>
+            <div>
+              <label for="floor-height">층고 (m)</label>
+              <input id="floor-height" type="number" min="1" max="20"
+                     step="0.1" value="3" required disabled
+                     aria-describedby="building-mode-note">
+            </div>
+            <div>
+              <label for="building-thickness">건물 판 두께 (mm)</label>
+              <input id="building-thickness" type="number" min="0.1" max="100"
+                     step="0.1" value="1" required disabled
+                     aria-describedby="building-mode-note">
+            </div>
+            <p id="building-mode-note" class="field-note">통째로: buildings.stl 하나 · 층별로: 층마다 STL(buildings_floor_XX) · 판 두께 지정: 건물 판 두께로 나눈 도면 · 한 층 = 한 판: 층고를 축척에 맞춘 두께로 층마다 도면(building_XX).</p>
             <div>
               <label for="interval">지형 높이 간격 (m)</label>
               <input id="interval" type="number" min="0.1" max="1000"
@@ -231,7 +281,18 @@
                 <option>A2</option>
                 <option>A3</option>
                 <option>A4</option>
+                <option value="custom">사용자 설정</option>
               </select>
+            </div>
+            <div id="paper-custom" class="grid two" hidden>
+              <div>
+                <label for="paper-width">용지 가로 (mm)</label>
+                <input id="paper-width" type="number" min="50" max="5000" step="1" value="600" required disabled>
+              </div>
+              <div>
+                <label for="paper-height">용지 세로 (mm)</label>
+                <input id="paper-height" type="number" min="50" max="5000" step="1" value="400" required disabled>
+              </div>
             </div>
             <div>
               <label for="orientation">용지 방향</label>
@@ -242,123 +303,84 @@
             </div>
           </div>
 
+          <p id="model-summary" class="model-summary"
+             aria-live="polite" aria-atomic="true">
+            범위와 축척을 정하면 완성 크기가 표시됩니다.
+          </p>
           <p id="sheet-fit" class="note" aria-live="polite"></p>
           <p id="stack-note" class="note"></p>
           <p id="generation-error" class="note error" aria-live="polite" hidden></p>
-          <button id="run" type="button" class="primary"
-                  aria-describedby="generation-error">지형판 생성</button>
-          <button type="button" class="full-width secondary-action"
-                  data-go-step="1">이전 · 대지</button>
-        </section>
 
-        <section id="step-panel-3" class="step-panel"
-                 aria-labelledby="step-title-3" hidden>
-          <h3 id="step-title-3" tabindex="-1">모형 확인</h3>
-          <p>뷰어에서 3D 모형과 2D 지형판을 확인하세요.</p>
-          <p class="note">
-            지형판 수와 건물을 확인한 뒤 내보내기로 진행하세요.
-            표시 옵션은 ZIP의 전체 모델에 영향을 주지 않습니다.
-          </p>
-          <button id="inspect-viewer" type="button" class="full-width">
-            뷰어로 이동
+          <div class="section-actions">
+            <button id="run" type="button" class="primary"
+                    aria-describedby="generation-error">지형판 생성</button>
+          </div>
+        </fieldset>
+
+        <div class="section-actions">
+          <button type="button" class="full-width secondary-action"
+                  data-go-step="1">
+            이전 · 대지 <span aria-hidden="true">›</span>
           </button>
-          <button id="review-next" type="button"
-                  class="primary full-width secondary-action">
-            확인 완료 · 내보내기
-          </button>
-          <button type="button" class="full-width secondary-action"
-                  data-go-step="2">이전 · 설정</button>
-        </section>
-
-        <section id="step-panel-4" class="step-panel"
-                 aria-labelledby="step-title-4" hidden>
-          <h3 id="step-title-4" tabindex="-1">제작 파일 내보내기</h3>
-          <p>도면과 전체 모형을 하나의 ZIP으로 저장합니다.</p>
-          <ul class="export-contents">
-            <li>지형판 SVG·DXF</li>
-            <li>건물 STL · 적층 모형 3DM</li>
-            <li>프로젝트 JSON · 좌표·단위 설명</li>
-          </ul>
-          <p class="note">
-            건물이 없는 경우 STL은 포함되지 않습니다.
-            제작 전 절단선·단위·공차를 확인하세요.
-          </p>
-          <p id="export-error" class="note error" aria-live="polite" hidden></p>
-          <button id="export" type="button" class="primary full-width"
-                  aria-describedby="export-error" disabled>내보내기 ZIP</button>
-          <button type="button" class="full-width secondary-action"
-                  data-go-step="3">이전 · 확인</button>
-        </section>
-      </fieldset>
-    </section>
-
-    <section class="results" aria-label="미리보기와 처리 상태">
-      <section class="card status-card" aria-label="처리 상태">
-        <div class="status-meta">
-          <p id="engine-state" class="note" role="status" aria-live="polite">
-            엔진 준비 중
-          </p>
-          <span id="elapsed" class="elapsed" aria-live="off" hidden>0초 경과</span>
-        </div>
-        <div class="inline">
-          <p id="status" role="status" aria-live="polite" aria-atomic="true">
-            화면을 준비하고 있습니다.
-          </p>
-          <button id="cancel" type="button" disabled>취소</button>
-        </div>
-        <div id="operation-progress" class="progress-track"
-             role="progressbar" aria-label="작업 처리 중"
-             aria-describedby="status" hidden>
-          <span></span>
         </div>
       </section>
+    </fieldset>
 
-      <section class="card viewer-card" aria-labelledby="viewer-title">
-        <div class="section-heading viewer-heading">
-          <h2 id="viewer-title">미리보기</h2>
-          <span class="note">2D / 3D</span>
-        </div>
+    <section id="step-panel-3" class="step-panel review-section"
+             aria-labelledby="step-title-3">
+      <div class="section-intro">
+        <p class="eyebrow">03 · 확인</p>
+        <h3 id="step-title-3" tabindex="-1">모형을 확인하세요</h3>
+        <p class="subhead">입체로 살펴보고, 한 장씩 확인하세요.</p>
+      </div>
+
+      <section class="viewer-card" aria-labelledby="viewer-title">
+        <h2 id="viewer-title" class="sr-only">모형 미리보기</h2>
 
         <div class="tabs viewer-tabs" role="tablist" aria-label="미리보기 방식">
           <button id="view-tab-3d" type="button" role="tab"
                   data-view="3d" aria-selected="true"
-                  aria-controls="view-panel-3d">3D 모형</button>
+                  aria-controls="view-panel-3d">3D</button>
           <button id="view-tab-2d" type="button" role="tab"
                   data-view="2d" aria-selected="false"
-                  aria-controls="view-panel-2d" tabindex="-1">2D 지형판</button>
+                  aria-controls="view-panel-2d" tabindex="-1">2D</button>
         </div>
 
         <div class="viewer-panels">
           <section id="view-panel-3d" class="viewer-panel"
                    role="tabpanel" aria-labelledby="view-tab-3d">
-            <div class="section-heading">
-              <h3 id="model-title">3D 모형</h3>
-              <button id="reset-view" type="button" disabled>전체 보기</button>
-            </div>
+            <div class="viewer-options">
+              <div class="section-heading">
+                <h3 id="model-title">3D 모형</h3>
+                <button id="reset-view" type="button" class="text-action" disabled>
+                  전체 보기 <span aria-hidden="true">›</span>
+                </button>
+              </div>
 
-            <div class="toolbar" role="group" aria-label="3D 표시 옵션">
-              <label class="check">
-                <input id="show-plates" type="checkbox" checked> 지형판
-              </label>
-              <label class="check">
-                <input id="show-buildings" type="checkbox" checked> 건물
-              </label>
-              <label class="check">
-                <input id="show-edges" type="checkbox" checked> 모서리
-              </label>
-            </div>
+              <div class="toolbar" role="group" aria-label="3D 표시 옵션">
+                <label class="check">
+                  <input id="show-plates" type="checkbox" checked> 지형판
+                </label>
+                <label class="check">
+                  <input id="show-buildings" type="checkbox" checked> 건물
+                </label>
+                <label class="check">
+                  <input id="show-edges" type="checkbox" checked> 모서리
+                </label>
+              </div>
 
-            <label for="layer-slider">보이는 지형판 수</label>
-            <div class="inline">
-              <input id="layer-slider" type="range"
-                     min="0" max="0" value="0" disabled>
-              <output id="layer-count" for="layer-slider">0 / 0</output>
+              <label for="layer-slider">보이는 지형판 수</label>
+              <div class="inline">
+                <input id="layer-slider" type="range"
+                       min="0" max="0" value="0" disabled>
+                <output id="layer-count" for="layer-slider">0 / 0</output>
+              </div>
             </div>
 
             <div id="viewer" aria-label="3D 지형 모형"
                  aria-describedby="viewer-help"></div>
-            <p id="viewer-help" class="note">
-              드래그: 회전 · 휠: 확대 · 오른쪽 드래그: 이동.
+            <p id="viewer-help" class="note viewer-help">
+              드래그: 회전 · 휠: 확대 · 오른쪽 드래그: 이동.<br>
               표시 옵션은 ZIP의 전체 모델에 영향을 주지 않습니다.
             </p>
           </section>
@@ -366,11 +388,14 @@
           <section id="view-panel-2d" class="viewer-panel"
                    role="tabpanel" aria-labelledby="view-tab-2d"
                    aria-hidden="true" inert>
-            <div class="section-heading">
-              <h3 id="plate-title">2D 지형판</h3>
+            <div class="viewer-options">
+              <div class="section-heading">
+                <h3 id="plate-title">2D 지형판</h3>
+              </div>
+              <label for="plate-select">레이어</label>
+              <select id="plate-select" disabled></select>
             </div>
-            <label for="plate-select">레이어</label>
-            <select id="plate-select" disabled></select>
+
             <div class="plate-stage">
               <img id="plate-preview"
                    alt="선택한 지형판 SVG 미리보기" hidden>
@@ -379,6 +404,77 @@
           </section>
         </div>
       </section>
+
+      <fieldset id="review-controls" disabled>
+        <legend class="sr-only">모형 검토와 다음 단계</legend>
+        <p class="note section-help">지형판 수와 건물을 확인한 뒤 진행하세요.</p>
+        <div class="section-actions">
+          <button id="inspect-viewer" type="button"
+                  class="full-width text-action">
+            뷰어로 이동 <span aria-hidden="true">›</span>
+          </button>
+          <button id="review-next" type="button"
+                  class="primary full-width secondary-action">
+            확인 완료 · 내보내기
+          </button>
+        </div>
+      </fieldset>
+
+      <div class="section-actions">
+        <button type="button" class="full-width secondary-action"
+                data-go-step="2">
+          이전 · 설정 <span aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="step-panel-4" class="step-panel content-section export-section"
+             aria-labelledby="step-title-4">
+      <div class="section-intro">
+        <p class="eyebrow">04 · 제작</p>
+        <h3 id="step-title-4" tabindex="-1">내보내기</h3>
+        <p class="subhead">도면과 전체 모형을 하나의 ZIP으로.</p>
+      </div>
+
+      <ul class="export-contents">
+        <li>지형판 SVG·DXF</li>
+        <li>건물 STL · 적층 모형 3DM</li>
+        <li>프로젝트 JSON · 좌표·단위 설명</li>
+      </ul>
+      <p class="note">
+        건물이 없는 경우 STL은 포함되지 않습니다.<br>
+        제작 전 절단선·단위·공차를 확인하세요.
+      </p>
+      <p id="export-error" class="note error" aria-live="polite" hidden></p>
+
+      <div class="section-actions">
+        <button id="export" type="button" class="primary full-width"
+                aria-describedby="export-error" disabled>내보내기 ZIP</button>
+        <button type="button" class="full-width secondary-action"
+                data-go-step="3">
+          이전 · 확인 <span aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="status-card" aria-label="처리 상태">
+      <div class="status-meta">
+        <p id="engine-state" class="note" role="status" aria-live="polite">
+          엔진 준비 중
+        </p>
+        <span id="elapsed" class="elapsed" aria-live="off" hidden>0초 경과</span>
+      </div>
+      <div class="inline">
+        <p id="status" role="status" aria-live="polite" aria-atomic="true">
+          화면을 준비하고 있습니다.
+        </p>
+        <button id="cancel" type="button" disabled>취소</button>
+      </div>
+      <div id="operation-progress" class="progress-track"
+           role="progressbar" aria-label="작업 처리 중"
+           aria-describedby="status" hidden>
+        <span></span>
+      </div>
     </section>
   </main>
 
@@ -389,7 +485,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js").catch(error => {
+    import("./app.js?v=20261108g").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

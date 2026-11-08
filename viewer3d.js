@@ -271,6 +271,39 @@ export class Viewer3D {
     return new Uint8Array(binary.buffer, binary.byteOffset, binary.byteLength);
   }
 
+  // 3D print by floor: one STL per storey (buildings_floor_XX.stl), every
+  // building cut at multiples of floorHeight (m) so floors print flat and stack.
+  exportBuildingsSTLByFloor(floorHeight) {
+    if (!this.project || !this.project.buildings.length) return {};
+    const scale = 1000 / this.project.settings.scale;
+    const floors = new Map();
+    this.project.buildings.forEach(building => {
+      const n = Math.max(1, Math.round(building.h / floorHeight));
+      const step = building.h / n;  // even storeys that add up to h
+      const base = this.stackBase(building.base);
+      for (let k = 0; k < n; k++) {
+        const geometry = new THREE.ExtrudeGeometry(
+          buildingShape(building, this.origin),
+          { depth: step, bevelEnabled: false, steps: 1, curveSegments: 1 }
+        );
+        const mesh = new THREE.Mesh(geometry);
+        mesh.position.z = base + k * step;
+        if (!floors.has(k)) floors.set(k, new THREE.Group());
+        floors.get(k).add(mesh);
+      }
+    });
+    const out = {};
+    for (const [k, group] of floors) {
+      group.scale.setScalar(scale);
+      group.updateMatrixWorld(true);
+      const binary = new STLExporter().parse(group, { binary: true });
+      out[`buildings_floor_${String(k + 1).padStart(2, "0")}.stl`] =
+        new Uint8Array(binary.buffer, binary.byteOffset, binary.byteLength);
+      group.traverse(o => o.geometry?.dispose());
+    }
+    return out;
+  }
+
   export3DM(rhino) {
     if (!this.project) throw new Error("생성된 프로젝트가 없습니다.");
     const file = new rhino.File3dm();

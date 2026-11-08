@@ -31,7 +31,9 @@ SIZES_MM = {
 MARGIN_MM = 12
 FOOTER_MM = 24
 SETTING_KEYS = {
-    "scale", "thickness_mm", "interval_m", "paper", "orientation"
+    "scale", "thickness_mm", "interval_m", "paper", "orientation",
+    "building_mode", "building_thickness_mm", "floor_height_m",
+    "paper_width_mm", "paper_height_mm",
 }
 
 
@@ -55,11 +57,38 @@ def validate_settings(settings):
         raise ValueError("등고 간격은 양수여야 합니다.")
     paper = settings.get("paper", "A3")
     orientation = settings.get("orientation", "landscape")
-    if paper not in SIZES_MM:
-        raise ValueError("용지는 A0~A4 중에서 선택해 주세요.")
+    custom = None
+    if paper == "custom":
+        # user-defined sheet, e.g. a laser bed of 600 x 400 mm
+        cw = number(settings.get("paper_width_mm", 600), "용지 가로")
+        ch = number(settings.get("paper_height_mm", 400), "용지 세로")
+        if not (50 <= cw <= 5000 and 50 <= ch <= 5000):
+            raise ValueError("사용자 용지는 가로·세로 50~5000 mm 범위여야 합니다.")
+        custom = (cw, ch)
+    elif paper not in SIZES_MM:
+        raise ValueError("용지는 A0~A4 또는 사용자 설정이어야 합니다.")
     if orientation not in {"landscape", "portrait"}:
         raise ValueError("방향은 landscape 또는 portrait여야 합니다.")
+    # Buildings: "print" (STL for a 3D printer) or "laser" (stacked sheets
+    # with their own board thickness, independent of the terrain plates).
+    building_mode = settings.get("building_mode", "print")
+    # print: one STL · print_floor: one STL per storey ·
+    # laser: boards of building_thickness_mm · laser_floor: one storey = one board
+    if building_mode not in {"print", "print_floor", "laser", "laser_floor"}:
+        raise ValueError("지원하지 않는 건물 제작 방식입니다.")
+    floor_height = number(settings.get("floor_height_m", 3), "층고")
+    if not 1 <= floor_height <= 20:
+        raise ValueError("층고는 1~20 m 범위여야 합니다.")
+    building_thickness = number(
+        settings.get("building_thickness_mm", thickness), "건물 판 두께"
+    )
+    if building_thickness <= 0:
+        raise ValueError("건물 판 두께는 양수여야 합니다.")
     return {
+        "building_mode": building_mode,
+        "building_thickness_mm": building_thickness,
+        "floor_height_m": floor_height,
+        **({"paper_width_mm": custom[0], "paper_height_mm": custom[1]} if custom else {}),
         "scale": scale,
         "thickness_mm": thickness,
         "interval_m": interval,
@@ -74,12 +103,16 @@ def _layout(bounds, settings):
     xmin, ymin, xmax, ymax = [number(v, "범위") for v in bounds]
     if xmax <= xmin or ymax <= ymin:
         raise ValueError("도면 범위의 폭과 높이는 양수여야 합니다.")
-    short, long = SIZES_MM[settings["paper"]]
-    width, height = (
-        (long, short)
-        if settings["orientation"] == "landscape"
-        else (short, long)
-    )
+    if settings["paper"] == "custom":
+        # custom sizes are taken as typed: width x height, no rotation
+        width, height = settings["paper_width_mm"], settings["paper_height_mm"]
+    else:
+        short, long = SIZES_MM[settings["paper"]]
+        width, height = (
+            (long, short)
+            if settings["orientation"] == "landscape"
+            else (short, long)
+        )
     usable_width = width - 2 * MARGIN_MM
     usable_height = height - 2 * MARGIN_MM - FOOTER_MM
     factor = 1000 / settings["scale"]
@@ -96,7 +129,7 @@ def _layout(bounds, settings):
             (ymax - ymin) * 1000 / usable_height,
         ))
         raise ValueError(
-            f"{settings['paper']}에 들어가지 않습니다. "
+            f"{'사용자 용지' if settings['paper'] == 'custom' else settings['paper']}에 들어가지 않습니다. "
             f"축척을 1:{minimum} 이상으로 지정하거나 용지를 키워 주세요."
         )
     return {
@@ -259,4 +292,59 @@ def render_sheets(project):
         output[name + ".dxf"] = _dxf(cut_mm, engrave_mm, label)
         previous_geometry = geometry
         previous_z = z
+    if settings["building_mode"] in {"laser", "laser_floor"}:
+        output.update(_building_sheets(project.get("buildings", []), layout, settings))
     return output
+
+
+def _building_sheets(buildings, layout, settings):
+    """Laser sheets for buildings: building i gets ceil(h_model / t) layers.
+
+    Sheet k holds the footprint of every building taller than k layers, in
+    site position (same layout as the terrain plates) with its number
+    engraved, so pieces can be glued in place on the plates.
+    """
+    scale = settings["scale"]
+    per_floor = settings["building_mode"] == "laser_floor"
+    fh = settings["floor_height_m"]
+    # one storey = one board: board thickness is the floor height at scale
+    t = fh * 1000.0 / scale if per_floor else settings["building_thickness_mm"]
+    layers = []
+    for number_, b in enumerate(buildings, start=1):
+        if per_floor:
+            n = max(1, round(float(b["h"]) / fh))
+        else:
+            h_mm = float(b["h"]) * 1000.0 / scale
+            n = max(1, math.ceil(h_mm / t - 1e-6))
+        layers.append((number_, b, n))
+    if not layers:
+        return {}
+    out = {}
+    for k in range(max(n for _, _, n in layers)):
+        cut, labels = [], []
+        for number_, b, n in layers:
+            if n <= k:
+                continue
+            rings = [b["polygon"], *b.get("holes", [])]
+            cut.extend(_mm([list(p[:2]) for p in ring], layout) for ring in rings)
+            ring = b["polygon"]
+            cx = sum(p[0] for p in ring[:-1]) / max(1, len(ring) - 1)
+            cy = sum(p[1] for p in ring[:-1]) / max(1, len(ring) - 1)
+            labels.append((_mm([[cx, cy]], layout)[0], f"B{number_}"))
+        label = (
+            f"BUILDINGS {'FLOOR' if per_floor else 'L'}{k + 1:02d} | 1:{scale:g} | t={t:.3g} mm | "
+            "glue on terrain | print 100%"
+        )
+        name = f"building_{k + 1:02d}"
+        svg = _svg(cut, [], layout, label)
+        marks = "".join(
+            f'<text x="{x:.3f}" y="{layout["height"] - y:.3f}" font-size="1.6" '
+            f'text-anchor="middle" font-family="sans-serif" fill="#285cd2">{txt}</text>'
+            for (x, y), txt in labels
+        )
+        out[name + ".svg"] = svg.replace(
+            '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">',
+            '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">' + marks, 1,
+        )
+        out[name + ".dxf"] = _dxf(cut, [], label)
+    return out

@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js";
-import { Viewer3D } from "./viewer3d.js";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain } from "./ign.js?v=20261108g";
+import { Viewer3D } from "./viewer3d.js?v=20261108g";
 import {
   zipSync,
   strToU8
@@ -52,7 +52,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261108g", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -144,15 +144,37 @@ function settings() {
     thickness_mm: Number($("#thickness").value),
     interval_m: Number($("#interval").value),
     paper: $("#paper").value,
-    orientation: $("#orientation").value
+    orientation: $("#orientation").value,
+    ...($("#paper").value === "custom" ? {
+      paper_width_mm: Number($("#paper-width").value),
+      paper_height_mm: Number($("#paper-height").value)
+    } : {}),
+    building_mode: $("#building-mode").value,
+    building_thickness_mm: Number($("#building-thickness").value),
+    floor_height_m: Number($("#floor-height").value)
   };
 }
 
+// Building board thickness only matters for laser-cut buildings.
+$("#building-mode").addEventListener("change", () => {
+  const mode = $("#building-mode").value;
+  $("#building-thickness").disabled = mode !== "laser";
+  $("#floor-height").disabled = !mode.endsWith("_floor");
+  invalidate();
+});
+$("#building-thickness").addEventListener("change", () => invalidate());
+$("#floor-height").addEventListener("change", () => invalidate());
+
 function availablePaper(config) {
-  const dimensions = PAPER_MM[config.paper];
-  if (!dimensions) throw new Error("지원하지 않는 용지입니다.");
-  const [width, height] = config.orientation === "landscape"
-    ? [dimensions[1], dimensions[0]] : dimensions;
+  let width, height;
+  if (config.paper === "custom") {
+    [width, height] = [config.paper_width_mm, config.paper_height_mm];
+  } else {
+    const dimensions = PAPER_MM[config.paper];
+    if (!dimensions) throw new Error("지원하지 않는 용지입니다.");
+    [width, height] = config.orientation === "landscape"
+      ? [dimensions[1], dimensions[0]] : dimensions;
+  }
   // Same reserved space as the reference UI: 24 mm horizontal, 48 mm vertical.
   return [width - 24, height - 48];
 }
@@ -180,6 +202,19 @@ function updateSettingsNotes() {
       : "");
 
   const bounds = project?.bounds || (source === "ign" ? ignMap.bounds : null);
+  const summary = $("#model-summary");
+  if (bounds && Number.isFinite(scale) && scale > 0) {
+    const width = (bounds[2] - bounds[0]) * 1000 / scale;
+    const height = (bounds[3] - bounds[1]) * 1000 / scale;
+    const format = value => Number(value.toFixed(1)).toLocaleString("ko-KR");
+    summary.textContent =
+      `완성 크기 ${format(width)} × ${format(height)} mm · ` +
+      (project ? `판 ${project.layers.length}장` : "판 수는 생성 후 표시");
+  } else {
+    summary.textContent =
+      "범위와 축척을 정하면 완성 크기가 표시됩니다.";
+  }
+
   const note = $("#sheet-fit");
   if (!bounds || !(scale > 0)) {
     note.textContent = "범위와 축척을 정하면 용지 적합성을 표시합니다.";
@@ -188,7 +223,9 @@ function updateSettingsNotes() {
   }
   const config = {
     scale, paper: $("#paper").value,
-    orientation: $("#orientation").value
+    orientation: $("#orientation").value,
+    paper_width_mm: Number($("#paper-width").value),
+    paper_height_mm: Number($("#paper-height").value)
   };
   const fit = checkFit(bounds, config);
   note.textContent = fit.text + (fit.fits ? "" : " · 범위 또는 축척을 조정하세요.");
@@ -206,6 +243,8 @@ function clearPreview() {
 function invalidate() {
   project = null;
   sheetFiles = null;
+  $("#model-summary").textContent =
+    "설정을 확인하고 지형판을 생성하세요.";
   clearPreview();
   $("#plate-select").replaceChildren();
   $("#plate-select").disabled = true;
@@ -463,7 +502,16 @@ $("#load-buildings").onclick = () => operation(async signal => {
 $("#select-all").onclick = () => ignMap.selectAll(true);
 $("#select-none").onclick = () => ignMap.selectAll(false);
 
-for (const id of ["scale", "thickness", "interval", "paper", "orientation", "grid-step"]) {
+// Custom paper: show width/height fields only when chosen.
+const syncPaper = () => {
+  const custom = $("#paper").value === "custom";
+  $("#paper-custom").hidden = !custom;
+  $("#paper-width").disabled = $("#paper-height").disabled = !custom;
+  $("#orientation").disabled = custom;
+};
+$("#paper").addEventListener("change", syncPaper);
+syncPaper();
+for (const id of ["scale", "thickness", "interval", "paper", "orientation", "grid-step", "paper-width", "paper-height"]) {
   $("#" + id).addEventListener("input", () => {
     invalidate();
     updateSettingsNotes();
@@ -671,12 +719,13 @@ function validateSheets(files) {
   if (!names.length) throw new Error("생성된 지형판 파일이 없습니다.");
 
   for (const name of names) {
-    if (!/^plate_\d+\.(svg|dxf)$/.test(name) || typeof files[name] !== "string") {
+    // plate_XX = terrain plates; building_XX = laser-cut building layers.
+    if (!/^(plate|building)_\d+\.(svg|dxf)$/.test(name) || typeof files[name] !== "string") {
       throw new Error(`지형판 파일 이름 또는 내용이 올바르지 않습니다: ${name}`);
     }
   }
   const svgNames = names.filter(name => name.endsWith(".svg"));
-  if (svgNames.length !== project.layers.length) {
+  if (svgNames.filter(n => n.startsWith("plate_")).length !== project.layers.length) {
     throw new Error("지형판 SVG 수와 프로젝트 레이어 수가 다릅니다.");
   }
   for (const name of svgNames) {
@@ -687,8 +736,9 @@ function validateSheets(files) {
   if (names.filter(name => name.endsWith(".dxf")).length !== svgNames.length) {
     throw new Error("지형판 SVG와 DXF 개수가 다릅니다.");
   }
-  return svgNames.sort((a, b) =>
-    Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+  // terrain plates first, then building layers, each in number order
+  const key = n => (n.startsWith("building_") ? 1000 : 0) + Number(n.match(/\d+/)[0]);
+  return svgNames.sort((a, b) => key(a) - key(b));
 }
 
 function showPlate() {
@@ -803,8 +853,9 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     $("#plate-select").replaceChildren(...names.map((name, ordinal) => {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent =
-        `${name} · 레이어 ${layers[ordinal].index} · z ${layers[ordinal].z.toFixed(2)} m`;
+      option.textContent = name.startsWith("building_")
+        ? `${name} · 건물 ${Number(name.match(/\d+/)[0])}번째 판`
+        : `${name} · 레이어 ${layers[ordinal].index} · z ${layers[ordinal].z.toFixed(2)} m`;
       return option;
     }));
     $("#plate-select").disabled = false;
@@ -857,8 +908,13 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
     files[name] = strToU8(content);
   }
 
-  const stl = viewer.exportBuildingsSTL();
-  if (stl) files["buildings.stl"] = stl;
+  const mode = project.settings.building_mode || "print";
+  if (mode === "print_floor") {
+    Object.assign(files, viewer.exportBuildingsSTLByFloor(project.settings.floor_height_m || 3));
+  } else {
+    const stl = viewer.exportBuildingsSTL();
+    if (stl) files["buildings.stl"] = stl;
+  }
   files["model.3dm"] = viewer.export3DM(rhino);
   files["project.json"] = strToU8(JSON.stringify(project, null, 2));
   files["model-coordinates.json"] = strToU8(
@@ -930,13 +986,21 @@ function showLocalError(id, message) {
 }
 
 function syncSteps() {
-  $("#step-count").textContent = `단계 ${currentStep} / 4`;
+  $("#step-count").textContent = `단계 ${currentStep}/4`;
+  $("#settings-controls").disabled = busy || !completedSteps.has(1);
+  $("#settings-help").textContent = completedSteps.has(1)
+    ? "설정을 바꾸면 기존 모형을 다시 생성해야 합니다."
+    : "대지 선택을 마치고 ‘다음 · 설정’을 누르면 설정할 수 있습니다.";
+  $("#review-controls").disabled = busy || !project || !sheetFiles;
+  $("#export").disabled =
+    busy || !project || !sheetFiles || !completedSteps.has(3);
+
   for (const button of document.querySelectorAll("[data-step]")) {
     const step = Number(button.dataset.step);
     const current = step === currentStep;
     const done = completedSteps.has(step);
     button.dataset.done = String(done && !current);
-    button.setAttribute("aria-expanded", String(current));
+    button.setAttribute("aria-expanded", "true");
     if (current) button.setAttribute("aria-current", "step");
     else button.removeAttribute("aria-current");
     button.querySelector(".step-state").textContent =
@@ -950,14 +1014,21 @@ function syncSteps() {
 
 function showStep(step, focus = false) {
   currentStep = step;
-  for (let number = 1; number <= 4; number++) {
-    $("#step-panel-" + number).hidden = number !== step;
-  }
   syncSteps();
   if (step === 1 && source === "ign") {
     requestAnimationFrame(() => ignMap.resize());
   }
-  if (focus) $("#step-title-" + step).focus();
+  if (focus) {
+    const panel = $("#step-panel-" + step);
+    panel.classList.remove("reveal-pending");
+    const title = $("#step-title-" + step);
+    title.focus({ preventScroll: true });
+    title.scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto" : "smooth",
+      block: "start"
+    });
+  }
 }
 
 function continueFromSite() {
@@ -1044,6 +1115,29 @@ function setupInterface() {
       }
     });
   }
+  if ("IntersectionObserver" in window &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.remove("reveal-pending");
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: 0, rootMargin: "0px 0px -24px 0px" });
+
+    for (const panel of document.querySelectorAll(".step-panel")) {
+      observer.observe(panel);
+      panel.classList.add("reveal-pending");
+    }
+    document.addEventListener("focusin", event => {
+      const panel = event.target.closest(".step-panel");
+      if (panel) {
+        panel.classList.remove("reveal-pending");
+        observer.unobserve(panel);
+      }
+    });
+  }
+
   syncSteps();
   selectView("3d");
   // No worker init command is exposed by the supplied PythonClient.
@@ -1056,3 +1150,90 @@ function setupInterface() {
       "엔진 사전 준비 실패 · 생성 시 재시도: " + error.message;
   }
 }
+
+// 2D plate preview: wheel/pinch zoom around the cursor, drag to pan,
+// +/−/맞춤 buttons. Purely visual; the exported SVG is unchanged.
+(() => {
+  const stage = document.querySelector(".plate-stage");
+  const img = $("#plate-preview");
+  if (!stage || !img) return;
+  let s = 1, x = 0, y = 0, drag = null;
+  const pointers = new Map();
+  let pinch = null;
+  const apply = () => {
+    // Resize instead of CSS scale() so the SVG is re-rasterised crisply.
+    img.style.width = `${s * 100}%`;
+    img.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    if (zoomLabel) zoomLabel.textContent = `${Math.round(s * 100)}%`;
+  };
+  const zoomAt = (factor, cx, cy) => {
+    const next = Math.min(40, Math.max(1, s * factor));
+    const r = stage.getBoundingClientRect();
+    const px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2;
+    x = px - (px - x) * (next / s);
+    y = py - (py - y) * (next / s);
+    s = next;
+    if (s === 1) { x = 0; y = 0; }
+    apply();
+  };
+  const reset = () => { s = 1; x = 0; y = 0; apply(); };
+
+  const bar = document.createElement("div");
+  bar.className = "zoom-bar";
+  bar.innerHTML =
+    '<button type="button" data-z="out" aria-label="축소">−</button>' +
+    '<span class="zoom-label" aria-live="polite">100%</span>' +
+    '<button type="button" data-z="in" aria-label="확대">+</button>' +
+    '<button type="button" data-z="fit">맞춤</button>';
+  stage.after(bar);
+  const zoomLabel = bar.querySelector(".zoom-label");
+  bar.addEventListener("click", e => {
+    const z = e.target.closest("button")?.dataset.z;
+    const r = stage.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    if (z === "in") zoomAt(1.5, cx, cy);
+    if (z === "out") zoomAt(1 / 1.5, cx, cy);
+    if (z === "fit") reset();
+  });
+
+  stage.addEventListener("wheel", e => {
+    if (img.hidden) return;
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  }, { passive: false });
+
+  stage.addEventListener("pointerdown", e => {
+    if (img.hidden) return;
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    stage.setPointerCapture(e.pointerId);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) };
+      drag = null;
+    } else {
+      drag = { sx: e.clientX - x, sy: e.clientY - y };
+    }
+  });
+  stage.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      zoomAt(d / pinch.d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      pinch.d = d;
+    } else if (drag && s > 1) {
+      x = e.clientX - drag.sx; y = e.clientY - drag.sy; apply();
+    }
+  });
+  const end = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!pointers.size) drag = null;
+  };
+  stage.addEventListener("pointerup", end);
+  stage.addEventListener("pointercancel", end);
+  stage.addEventListener("dblclick", reset);
+  // New plate selected or regenerated → back to fit.
+  img.addEventListener("load", reset);
+})();
