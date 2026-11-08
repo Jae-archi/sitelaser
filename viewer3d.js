@@ -1,0 +1,342 @@
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLExporter } from "three/addons/exporters/STLExporter.js";
+
+function openRing(ring) {
+  const points = ring.map(point => [point[0], point[1]]);
+  if (points.length > 1) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (first[0] === last[0] && first[1] === last[1]) points.pop();
+  }
+  if (points.length < 3) throw new Error("지형판 폐곡선의 점이 부족합니다.");
+  return points;
+}
+
+function area(ring) {
+  let sum = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    sum += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  }
+  return Math.abs(sum / 2);
+}
+
+function contains(ring, point) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a[1] > point[1]) !== (b[1] > point[1]) &&
+        point[0] < (b[0] - a[0]) * (point[1] - a[1]) /
+          (b[1] - a[1]) + a[0]) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pathFromRing(ring, origin, shape = false) {
+  const path = shape ? new THREE.Shape() : new THREE.Path();
+  ring.forEach(([x, y], index) => {
+    const a = x - origin[0], b = y - origin[1];
+    if (index === 0) path.moveTo(a, b);
+    else path.lineTo(a, b);
+  });
+  path.closePath();
+  return path;
+}
+
+// Cut rings use even-odd nesting, independent of winding.
+// Intersecting or self-crossing contours must be rejected by the Python engine.
+function cutShapes(rings, origin) {
+  const nodes = rings.map(ring => {
+    const points = openRing(ring);
+    return { points, area: area(points), parent: -1, depth: 0, shape: null };
+  }).sort((a, b) => b.area - a.area);
+
+  nodes.forEach((node, i) => {
+    for (let j = i - 1; j >= 0; j--) {
+      if (contains(nodes[j].points, node.points[0])) {
+        node.parent = j;
+        node.depth = nodes[j].depth + 1;
+        break;
+      }
+    }
+    if (node.depth % 2 === 0) {
+      node.shape = pathFromRing(node.points, origin, true);
+    } else {
+      nodes[node.parent].shape.holes.push(pathFromRing(node.points, origin));
+    }
+  });
+  return nodes.filter(node => node.shape).map(node => node.shape);
+}
+
+function buildingShape(building, origin) {
+  const shape = pathFromRing(openRing(building.polygon), origin, true);
+  for (const ring of building.holes) {
+    shape.holes.push(pathFromRing(openRing(ring), origin));
+  }
+  return shape;
+}
+
+function disposeGroup(group) {
+  group.traverse(object => {
+    object.geometry?.dispose();
+    const materials = Array.isArray(object.material)
+      ? object.material : [object.material];
+    for (const material of materials) material?.dispose();
+  });
+  group.clear();
+}
+
+export class Viewer3D {
+  constructor(element) {
+    this.element = element;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color("#e9ece8");
+
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.01, 1000000);
+    this.camera.up.set(0, 0, 1);
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    element.append(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.addEventListener("change", () => this.render());
+
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x77766b, 2.3));
+    const light = new THREE.DirectionalLight(0xffffff, 2.5);
+    light.position.set(-1, -2, 4);
+    this.scene.add(light);
+
+    this.model = new THREE.Group();
+    this.scene.add(this.model);
+    this.plates = [];
+    this.buildings = [];
+    this.options = { plates: true, buildings: true, edges: true, count: 0 };
+
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(element);
+    this.resize();
+  }
+
+  resize() {
+    const width = Math.max(1, this.element.clientWidth);
+    const height = Math.max(1, this.element.clientHeight);
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.render();
+  }
+
+  render() { this.renderer.render(this.scene, this.camera); }
+
+  clear() {
+    disposeGroup(this.model);
+    this.plates = [];
+    this.buildings = [];
+    this.project = null;
+    this.render();
+  }
+
+  addMesh(shape, depth, z, color, name) {
+    const geometry = new THREE.ExtrudeGeometry(shape, {
+      depth,
+      bevelEnabled: false,
+      steps: 1,
+      curveSegments: 1
+    });
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({
+      color, roughness: 0.85, metalness: 0
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.position.z = z;
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: 0x5c5b53, transparent: true, opacity: 0.5 })
+    );
+    edges.userData.isEdge = true;
+    mesh.add(edges);
+    this.model.add(mesh);
+    return mesh;
+  }
+
+  setProject(project) {
+    this.clear();
+    this.project = project;
+    const [xmin, ymin, xmax, ymax] = project.bounds;
+    this.origin = [(xmin + xmax) / 2, (ymin + ymax) / 2];
+    this.layers = [...project.layers].sort((a, b) => a.z - b.z);
+    this.thickness = project.settings.thickness_mm * project.settings.scale / 1000;
+
+    try {
+      this.layers.forEach((layer, ordinal) => {
+        for (const shape of cutShapes(layer.cut, this.origin)) {
+          const mesh = this.addMesh(
+            shape,
+            this.thickness,
+            ordinal * this.thickness,
+            ordinal % 2 ? 0xc9bd9c : 0xd8ccad,
+            `plate_${layer.index}`
+          );
+          mesh.userData.ordinal = ordinal;
+          this.plates.push(mesh);
+        }
+      });
+
+      project.buildings.forEach((building, index) => {
+        const base = this.stackBase(building.base);
+        const mesh = this.addMesh(
+          buildingShape(building, this.origin),
+          building.h,
+          base,
+          0xe6e3da,
+          `building_${index + 1}`
+        );
+        this.buildings.push(mesh);
+      });
+      this.options.count = this.layers.length;
+      this.setOptions(this.options);
+      this.fit();
+    } catch (error) {
+      this.clear();
+      throw error;
+    }
+  }
+
+  stackBase(sourceBase) {
+    // A building rests on the top of the last source-height plate below it.
+    // Its height remains in source metres, without vertical exaggeration.
+    let ordinal = -1;
+    for (let i = 0; i < this.layers.length; i++) {
+      if (this.layers[i].z <= sourceBase + 1e-8) ordinal = i;
+      else break;
+    }
+    return (ordinal + 1) * this.thickness;
+  }
+
+  setOptions(options) {
+    Object.assign(this.options, options);
+    this.plates.forEach(mesh => {
+      mesh.visible = this.options.plates &&
+        mesh.userData.ordinal < this.options.count;
+    });
+    this.buildings.forEach(mesh => { mesh.visible = this.options.buildings; });
+    this.model.traverse(object => {
+      if (object.userData.isEdge) object.visible = this.options.edges;
+    });
+    this.render();
+  }
+
+  fit() {
+    if (!this.project) return;
+    const box = new THREE.Box3().setFromObject(this.model);
+    if (box.isEmpty()) return;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.length() / 2, 1);
+    const vertical = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const horizontal = Math.atan(Math.tan(vertical) * this.camera.aspect);
+    const distance = radius / Math.sin(Math.min(vertical, horizontal)) * 1.15;
+    const direction = new THREE.Vector3(1, -1.3, 1).normalize();
+
+    this.camera.position.copy(center).addScaledVector(direction, distance);
+    this.camera.near = Math.max(0.001, distance / 10000);
+    this.camera.far = distance * 20;
+    this.camera.updateProjectionMatrix();
+    this.controls.target.copy(center);
+    this.controls.maxDistance = distance * 10;
+    this.controls.update();
+    this.render();
+  }
+
+  exportBuildingsSTL() {
+    if (!this.project || !this.buildings.length) return null;
+    const group = new THREE.Group();
+    const scale = 1000 / this.project.settings.scale;
+
+    // Fresh mesh wrappers: visibility, edges and the camera cannot affect STL.
+    for (const source of this.buildings) {
+      const mesh = new THREE.Mesh(source.geometry, source.material);
+      mesh.position.copy(source.position);
+      group.add(mesh);
+    }
+    group.scale.setScalar(scale);
+    group.updateMatrixWorld(true);
+    const binary = new STLExporter().parse(group, { binary: true });
+    return new Uint8Array(binary.buffer, binary.byteOffset, binary.byteLength);
+  }
+
+  export3DM(rhino) {
+    if (!this.project) throw new Error("생성된 프로젝트가 없습니다.");
+    const file = new rhino.File3dm();
+    const scale = 1000 / this.project.settings.scale;
+    file.settings().modelUnitSystem = rhino.UnitSystem.Millimeters;
+
+    try {
+      for (const source of [...this.plates, ...this.buildings]) {
+        const geometry = source.geometry;
+        const positions = geometry.getAttribute("position");
+        const indices = geometry.index;
+        const mesh = new rhino.Mesh();
+        const attributes = new rhino.ObjectAttributes();
+
+        try {
+          attributes.name = source.name;
+          const vertices = mesh.vertices();
+          for (let i = 0; i < positions.count; i++) {
+            vertices.add(
+              positions.getX(i) * scale,
+              positions.getY(i) * scale,
+              (positions.getZ(i) + source.position.z) * scale
+            );
+          }
+          const faces = mesh.faces();
+          const count = indices ? indices.count : positions.count;
+          for (let i = 0; i < count; i += 3) {
+            const a = indices ? indices.getX(i) : i;
+            const b = indices ? indices.getX(i + 1) : i + 1;
+            const c = indices ? indices.getX(i + 2) : i + 2;
+            faces.addTriFace(a, b, c);
+          }
+          mesh.normals().computeNormals();
+          mesh.compact();
+          file.objects().add(mesh, attributes);
+        } finally {
+          attributes.delete();
+          mesh.delete();
+        }
+      }
+      return file.toByteArray();
+    } finally {
+      file.delete();
+    }
+  }
+
+  exportMetadata() {
+    return {
+      model_units: "mm",
+      source_units: "m",
+      source_xy_origin: this.origin,
+      horizontal_scale: 1000 / this.project.settings.scale,
+      source_layer_z: this.layers.map(layer => layer.z),
+      plate_bottom_mm: this.layers.map((_, i) =>
+        i * this.project.settings.thickness_mm),
+      building_base_rule: "top of last source-z plate at or below building.base",
+      building_height_rule: "source h * 1000 / scale",
+      stl: "buildings only; Z up; same assembly coordinates as model.3dm",
+      model_3dm: "all plates and buildings; Z up; assembly coordinates"
+    };
+  }
+
+  dispose() {
+    this.resizeObserver.disconnect();
+    this.controls.dispose();
+    this.clear();
+    this.renderer.dispose();
+  }
+}
