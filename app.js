@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zl";
-import { Viewer3D } from "./viewer3d.js?v=20261109zl";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zn";
+import { Viewer3D } from "./viewer3d.js?v=20261109zn";
 import {
   zipSync,
   strToU8
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109zl", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109zn", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -1197,7 +1197,7 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   }
   if (formats.has("pdf")) await addSheetPdfs(files, drawings);
   if (formats.has("3dm")) {
-    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zl", import.meta.url));
+    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zn", import.meta.url));
     if (!response.ok) throw new Error("Rhino 도면 텍스트 양식을 불러오지 못했습니다.");
     const template = new Uint8Array(await response.arrayBuffer());
     files["sheets_2d.3dm"] = sheets2D3dm(rhino, drawings.filter(drawing => !supports.includes(drawing)), template);

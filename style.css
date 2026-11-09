@@ -1399,3 +1399,12 @@ body[data-page="1"] #photo-opacity-field .range-ends { margin-top: -6px; }
   body[data-page="3"] #step-panel-3 { padding-bottom: 64px; }
   body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 440px); }
 }
+
+/* Desktop: the status toast is a single row (step label left, message right)
+   so it never grows tall enough to cover the "next" button. */
+@media (min-width: 1024px) {
+  .status-card { display: flex; align-items: center; gap: 8px 20px; padding: 10px 24px; }
+  .status-card .status-meta { flex: none; white-space: nowrap; margin: 0; }
+  .status-card .inline { flex: 1; min-width: 0; margin: 0; }
+  .status-card p { margin: 0; }
+}

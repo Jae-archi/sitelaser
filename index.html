@@ -14,7 +14,7 @@
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261109zl">
+  <link rel="stylesheet" href="./style.css?v=20261109zn">
 
   <script type="importmap">
   {
@@ -34,7 +34,7 @@
   <script>
     /* Laptops: scale the whole desktop layout down so each step fits the screen height. */
     (function () {
-      var REF = 1020, MIN = 0.6, root = document.documentElement;
+      var REF = 1200, MIN = 0.6, root = document.documentElement;
       function fit() {
         var z = 1;
         if (window.innerWidth >= 1024 && window.innerHeight < REF) z = Math.max(MIN, window.innerHeight / REF);
@@ -567,7 +567,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261109zl").catch(error => {
+    import("./app.js?v=20261109zn").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";
