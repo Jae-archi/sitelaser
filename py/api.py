@@ -104,7 +104,7 @@ if __package__:
         surface_layers,
         valid_polygon,
     )
-    from .sheets import render_sheets, sheet_drawings as _sheet_drawings, validate_settings
+    from .sheets import render_sheets, sheet_drawings as _sheet_drawings, sheet_supports as _sheet_supports, validate_settings
 else:
     # worker.js may place these three modules directly on sys.path.
     from slicing import (
@@ -119,7 +119,7 @@ else:
         surface_layers,
         valid_polygon,
     )
-    from sheets import render_sheets, sheet_drawings as _sheet_drawings, validate_settings
+    from sheets import render_sheets, sheet_drawings as _sheet_drawings, sheet_supports as _sheet_supports, validate_settings
 
 
 Project = dict
@@ -533,6 +533,11 @@ def from_terrain(dem, buildings, settings) -> Project:
 
 def sheets(project, style=None):
     return render_sheets(project, style)
+
+
+def sheet_supports():
+    """Support pieces (project coordinates) from the last sheets() call."""
+    return _sheet_supports()
 
 
 def sheet_drawings():

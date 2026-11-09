@@ -199,6 +199,7 @@ _style = dict(DEFAULT_STYLE)
 # Line geometry of every sheet from the last render (mm), for the combined
 # Rhino file of all 2D drawings.
 _drawings = []
+_supports = []  # support solids for the 3D model: {layer, text, rings}
 
 
 def _validated_style(style):
@@ -399,6 +400,7 @@ def render_sheets(project, style=None):
     global _style
     _style = _validated_style(style)
     _drawings.clear()
+    _supports.clear()
     if not isinstance(project, Mapping):
         raise ValueError("project는 객체여야 합니다.")
     settings = validate_settings(project["settings"])
@@ -460,6 +462,10 @@ def render_sheets(project, style=None):
                 checks[seat].append(f"B{b_num}: 윗 지형판과 몸체가 겹침")
                 break
     supports = _support_pieces(buildings, footprints, plates, elevations, layout)
+    for layer_index, parts in supports.items():
+        for piece, text, _ in parts:
+            _supports.append({"layer": layer_index, "text": text,
+                              "rings": [[list(p) for p in ring] for ring in rings(piece)]})
     for index, (_, _, cut, engrave, label) in enumerate(terrain):
         engrave_mm = [_mm(path, layout) for path in _exposed_engraving(engrave, surfaces[index])]
         parts = supports.get(index, [])
@@ -535,6 +541,11 @@ def _building_sheets(buildings, layout, settings, frame=None):
         # site border engraved like the terrain sheets, for registration on the board
         _save_sheet(out, f"building_{k + 1:02d}", t, cut, [frame] if frame else [], layout, label, labels)
     return out
+
+
+def sheet_supports():
+    """Support pieces of the last render, in project coordinates (m)."""
+    return [dict(item) for item in _supports]
 
 
 def sheet_drawings():

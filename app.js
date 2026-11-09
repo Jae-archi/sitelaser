@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zp";
-import { Viewer3D } from "./viewer3d.js?v=20261109zp";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zq";
+import { Viewer3D } from "./viewer3d.js?v=20261109zq";
 import {
   zipSync,
   strToU8
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109zp", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109zq", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -1115,6 +1115,8 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     status("레이저 도면(SVG·DXF)을 만드는 중");
     sheetFiles = await python.call("sheets");
     ensureCurrent();
+    const supportSolids = await python.call("sheet_supports");
+    ensureCurrent();
     const names = validateSheets(sheetFiles);
     const layers = [...project.layers].sort((a, b) => a.z - b.z);
 
@@ -1129,7 +1131,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     }));
     $("#plate-select").disabled = false;
 
-    viewer.setProject(project);
+    viewer.setProject(project, supportSolids);
     $("#layer-slider").max = String(project.layers.length);
     $("#layer-slider").value = String(project.layers.length);
     $("#layer-slider").disabled = false;
@@ -1197,7 +1199,7 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   }
   if (formats.has("pdf")) await addSheetPdfs(files, drawings);
   if (formats.has("3dm")) {
-    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zp", import.meta.url));
+    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zq", import.meta.url));
     if (!response.ok) throw new Error("Rhino 도면 텍스트 양식을 불러오지 못했습니다.");
     const template = new Uint8Array(await response.arrayBuffer());
     files["sheets_2d.3dm"] = sheets2D3dm(rhino, drawings.filter(drawing => !supports.includes(drawing)), template);

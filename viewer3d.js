@@ -164,7 +164,7 @@ export class Viewer3D {
     return mesh;
   }
 
-  setProject(project) {
+  setProject(project, supports = []) {
     this.clear();
     this.project = project;
     const [xmin, ymin, xmax, ymax] = project.bounds;
@@ -186,6 +186,20 @@ export class Viewer3D {
           this.plates.push(mesh);
         }
       });
+
+      // Support pieces under raised buildings: same board as the plate of their
+      // level, so the model has no floating buildings. They count as plates
+      // (layer slider, 3DM export).
+      for (const item of supports) {
+        const ordinal = this.layers.findIndex(layer => layer.index === item.layer);
+        if (ordinal < 0) continue;
+        for (const shape of cutShapes(item.rings, this.origin)) {
+          const mesh = this.addMesh(shape, this.thickness, ordinal * this.thickness,
+            0xb8ad8f, `support_${item.text}`);
+          mesh.userData.ordinal = ordinal;
+          this.plates.push(mesh);
+        }
+      }
 
       // Show buildings split the way they will be made: per storey for the
       // *_floor modes, per board for "laser", whole for "print".
@@ -347,44 +361,50 @@ export class Viewer3D {
 
     try {
       for (const source of [...this.plates, ...this.buildings]) {
-        const { shapes, options } = source.geometry.parameters;
-        const extrusion = new rhino.Extrusion();
-        const attributes = new rhino.ObjectAttributes();
-
         try {
-          attributes.name = source.name;
-          extrusion.setPathAndUp([0, 0, 0], [0, 0, options.depth * scale], [0, 1, 0]);
-          const outer = profile(shapes);
+          const { shapes, options } = source.geometry.parameters;
+          const extrusion = new rhino.Extrusion();
+          const attributes = new rhino.ObjectAttributes();
+
           try {
-            if (!extrusion.setOuterProfile(outer, true)) {
-              throw new Error(`Rhino 외곽선 생성 실패: ${source.name}`);
-            }
-          } finally {
-            outer.delete();
-          }
-          for (const hole of shapes.holes) {
-            const inner = profile(hole);
+            attributes.name = source.name;
+            extrusion.setPathAndUp([0, 0, 0], [0, 0, options.depth * scale], [0, 1, 0]);
+            const outer = profile(shapes);
             try {
-              if (!extrusion.addInnerProfile(inner)) {
-                throw new Error(`Rhino 내부 구멍 생성 실패: ${source.name}`);
+              if (!extrusion.setOuterProfile(outer, true)) {
+                throw new Error(`Rhino 외곽선 생성 실패: ${source.name}`);
               }
             } finally {
-              inner.delete();
+              outer.delete();
             }
-          }
-          const brep = extrusion.toBrep(true);
-          try {
-            if (!brep?.isValid || !brep.isSolid) {
-              throw new Error(`닫힌 Rhino 폴리서피스 생성 실패: ${source.name}`);
+            for (const hole of shapes.holes) {
+              const inner = profile(hole);
+              try {
+                if (!extrusion.addInnerProfile(inner)) {
+                  throw new Error(`Rhino 내부 구멍 생성 실패: ${source.name}`);
+                }
+              } finally {
+                inner.delete();
+              }
             }
-            if (source.position.z !== 0) brep.translate([0, 0, source.position.z * scale]);
-            file.objects().add(brep, attributes);
+            const brep = extrusion.toBrep(true);
+            try {
+              if (!brep?.isValid || !brep.isSolid) {
+                throw new Error(`닫힌 Rhino 폴리서피스 생성 실패: ${source.name}`);
+              }
+              if (source.position.z !== 0) brep.translate([0, 0, source.position.z * scale]);
+              file.objects().add(brep, attributes);
+            } finally {
+              brep?.delete();
+            }
           } finally {
-            brep?.delete();
+            attributes.delete();
+            extrusion.delete();
           }
-        } finally {
-          attributes.delete();
-          extrusion.delete();
+      
+        } catch (error) {
+          // a degenerate support sliver must not block the whole export
+          if (!source.name.startsWith("support_")) throw error;
         }
       }
       return file.toByteArray();
