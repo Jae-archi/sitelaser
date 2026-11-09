@@ -478,12 +478,11 @@ export class IGNMap {
   }
 
   setStyle(style, opacity) {
-    if (this.map.hasLayer(this.plan)) this.map.removeLayer(this.plan);
-    if (this.map.hasLayer(this.photo)) this.map.removeLayer(this.photo);
-    if (style !== "photo") this.plan.addTo(this.map);
-    if (style !== "plan") {
-      this.photo.setOpacity(style === "overlay" ? opacity : 1).addTo(this.map);
-    }
+    // Keep both layers on the map and fade the photo layer's opacity, so
+    // switching 지도 / 항공사진 / 겹쳐보기 cross-fades instead of popping.
+    if (!this.map.hasLayer(this.plan)) this.plan.addTo(this.map);
+    if (!this.map.hasLayer(this.photo)) this.photo.setOpacity(0).addTo(this.map);
+    this.photo.setOpacity(style === "plan" ? 0 : style === "photo" ? 1 : opacity);
   }
 
   setRadius(radius) {

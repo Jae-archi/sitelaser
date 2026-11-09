@@ -43,8 +43,8 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--ink);
-  font: 17px/1.65 "SF Pro Display", "SF Pro Text", -apple-system,
-    BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  font: 17px/1.65 "Pretendard Variable", Pretendard, -apple-system,
+    BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   overflow-wrap: anywhere;
   -webkit-text-size-adjust: 100%;
 }
@@ -1227,3 +1227,133 @@ body[data-page="4"] .export-layout .export-card.line-style { border: 1px solid v
   body[data-page="3"] #viewer { height: calc(100vh - 536px); }
   body[data-page="3"] .plate-stage { height: calc(100vh - 600px); }
 }
+
+/* Korean line breaking: never split a word, balance short multi-line text
+   so no single word is left alone on the last line. */
+body { word-break: keep-all; overflow-wrap: break-word; }
+h1, h2, h3, h4, .subhead, .eyebrow, .note, .loading-stage, .model-summary {
+  text-wrap: balance;
+}
+p, li, label { text-wrap: pretty; }
+/* the intro break is for wide screens; phones wrap naturally */
+@media (max-width: 640px) { .wide-break { display: none; } }
+
+/* Toss-like typography: slightly tight tracking, heavier headings */
+body { letter-spacing: -0.01em; }
+h1, h2, h3 { letter-spacing: -0.03em; font-weight: 700; }
+h4, button, .step-label { letter-spacing: -0.01em; }
+code, input[type="number"] { font-variant-numeric: tabular-nums; }
+/* Step 1: the four map modes as one segmented control on a single line */
+.map-tools {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px;
+  padding: 3px; border-radius: 980px; background: var(--surface, #f5f5f7);
+}
+.map-tools > button[data-map-mode] {
+  min-height: 40px; padding: 0 6px; border: 0; border-radius: 980px;
+  font-size: 14px; white-space: nowrap; background: transparent; box-shadow: none;
+}
+.map-tools > button[data-map-mode][aria-pressed="true"] { background: var(--ink, #1d1d1f); color: var(--paper, #fff); }
+.map-tools > #range-view { grid-column: 1 / -1; justify-self: start; background: transparent; min-height: 36px; padding: 0 6px; font-size: 14px; }
+/* search results: one line each where possible */
+#suggestions [role="option"], #suggestions button, #suggestions li { line-height: 1.4; }
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="1"] #panel-ign { --side-w: minmax(400px, 440px); grid-template-columns: var(--map-size) var(--side-w); }
+  body[data-page="1"] #panel-ign { --map-size: min(calc(100vh - 446px), calc(100vw - 600px), 760px); }
+  body[data-page="1"] #panel-ign.has-buildings {
+    --map-size: min(calc(100vh - 446px), calc(100vw - 960px), 760px);
+    grid-template-columns: var(--map-size) minmax(380px, 400px) minmax(300px, 360px);
+  }
+}
+@media (min-width: 1024px) and (min-height: 640px) and (max-height: 860px) {
+  body[data-page="1"] #panel-ign { --map-size: min(calc(100vh - 330px), calc(100vw - 600px), 760px); }
+  body[data-page="1"] #panel-ign.has-buildings { --map-size: min(calc(100vh - 330px), calc(100vw - 960px), 760px); }
+}
+/* Segmented control (replaces short dropdowns) */
+.visually-hidden-select { position: absolute !important; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.segmented {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
+  padding: 3px; border-radius: 980px; background: var(--surface, #f5f5f7);
+}
+.segmented > button {
+  min-height: 40px; padding: 0 10px; border: 0; border-radius: 980px;
+  background: transparent; color: inherit; font: inherit; font-size: 14px;
+  white-space: nowrap; cursor: pointer; box-shadow: none;
+}
+.segmented > button[aria-checked="true"] { background: var(--ink, #1d1d1f); color: var(--paper, #fff); }
+.segmented > button:disabled { opacity: .45; cursor: not-allowed; }
+/* Remaining dropdowns: one clean focus ring, no doubled border */
+select:focus-visible { outline: 2px solid var(--ink, #1d1d1f); outline-offset: 2px; border-color: transparent !important; box-shadow: none !important; }
+select { border-radius: 12px; }
+
+/* smooth background switch */
+#map .leaflet-layer { transition: opacity .35s ease; }
+#photo-opacity-field { transition: opacity .25s ease; }
+#photo-opacity-field.is-inactive { opacity: .35; }
+.segmented > button { transition: background-color .2s ease, color .2s ease; }
+@media (prefers-reduced-motion: reduce) {
+  #map .leaflet-layer, #photo-opacity-field, .segmented > button { transition: none; }
+}
+
+/* Step 1 v3: no scrolling column, load button first, wide one-line list */
+#map-note:empty { display: none; }
+.load-primary { width: 100%; min-height: 48px; }
+.list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line, #d2d2d7); }
+.list-head-text p { margin: 0; }
+.list-head-text #range-note { font-weight: 600; color: var(--ink, #1d1d1f); }
+.list-head-actions { display: flex; gap: 4px; white-space: nowrap; }
+.list-head-actions button { min-height: 36px; padding: 0 8px; font-size: 14px; }
+.building-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 12px; padding: 4px 4px; }
+.building-row > label { min-height: 40px; flex: none; }
+.building-row > label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.building-extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 0 0 6px 32px; font-size: 13px; }
+.building-doubt { color: var(--muted, #6e6e73); }
+.building-extra .building-floors input { width: 72px; min-height: 36px; }
+.building-extra a.building-locate { min-height: 36px; display: inline-flex; align-items: center; }
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="1"] #panel-ign { grid-template-columns: var(--map-size) minmax(360px, 400px); }
+  body[data-page="1"] #panel-ign.has-buildings {
+    --map-size: min(calc(100vh - 446px), calc(100vw - 1040px), 760px);
+    grid-template-columns: var(--map-size) minmax(340px, 380px) minmax(440px, 520px);
+  }
+  body[data-page="1"] .ign-side { overflow: hidden; }
+}
+@media (min-width: 1024px) and (min-height: 640px) and (max-height: 860px) {
+  body[data-page="1"] #panel-ign.has-buildings { --map-size: min(calc(100vh - 330px), calc(100vw - 1040px), 760px); }
+}
+
+/* "대지 범위" as a small button on the map */
+.map-corner-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 500;
+  min-height: 36px; padding: 0 14px; border: 0; border-radius: 980px;
+  background: rgba(255,255,255,.92); box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  font-size: 14px; cursor: pointer;
+}
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="1"] .ign-side { overflow: visible; display: flex; flex-direction: column; gap: 10px; padding-top: 0; }
+  body[data-page="1"] .ign-side > * + * { margin-top: 0 !important; }
+  body[data-page="1"] .ign-side label { margin-bottom: 4px; font-size: 14px; }
+  body[data-page="1"] .ign-side input:not([type="range"]), body[data-page="1"] .ign-side .segmented > button,
+  body[data-page="1"] .map-tools > button[data-map-mode] { min-height: 40px; }
+  body[data-page="1"] #search-note:empty { display: none; }
+  body[data-page="1"] #search-note { margin: 4px 0 0; font-size: 13px; }
+  body[data-page="1"] .ign-side .grid.two { gap: 10px; }
+  body[data-page="1"] .load-primary { min-height: 44px; }
+  body[data-page="1"] .map-appearance { grid-template-columns: 1.3fr 1fr; gap: 12px; align-items: end; }
+  body[data-page="1"] .range-ends { font-size: 11px; }
+  body[data-page="1"] #panel-ign.has-buildings {
+    --map-size: min(calc(100vh - 446px), calc(100vw - 980px), 760px);
+    grid-template-columns: var(--map-size) minmax(340px, 380px) minmax(400px, 480px);
+  }
+}
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="1"] .search-area { position: relative; }
+  body[data-page="1"] #suggestions:not(:empty) {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 600;
+    background: var(--paper, #fff); border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
+    max-height: 320px; overflow: auto;
+  }
+  body[data-page="1"] #search-note { display: none; }
+  body[data-page="1"] .ign-side { gap: 8px; }
+}
+
+.board-hint { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; color: var(--ink, #1d1d1f); }

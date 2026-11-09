@@ -8,13 +8,13 @@
         media="(prefers-color-scheme: dark)">
   <title>SiteLaser · 지형 모형 제작</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Pretendard (SIL OFL): closest open font to Toss Product Sans -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261109j">
+  <link rel="stylesheet" href="./style.css?v=20261109p">
 
   <script type="importmap">
   {
@@ -88,7 +88,7 @@
     <section class="intro" aria-labelledby="hero-title">
       <p class="eyebrow">ARCHI STUDIO</p>
       <h1 id="hero-title">대지 모형 도면,<br>지도에서 바로.</h1>
-      <p class="subhead">프랑스 어디든 범위를 고르면 레이저 커팅 도면과 3D 프린트 파일을 만듭니다.</p>
+      <p class="subhead">프랑스 어디든 범위를 고르면<br class="wide-break"> 레이저 커팅 도면과 3D 프린트 파일을 만듭니다.</p>
       <p class="note">설치 없이 웹에서 바로. 작업 파일은 기기 밖으로 나가지 않습니다.</p>
       <button id="start" type="button" class="primary start-button">시작하기 <span aria-hidden="true">›</span></button>
     </section>
@@ -268,15 +268,16 @@
                 <option value="print">3D 프린트 · 일체형</option>
                 <option value="print_floor">3D 프린트 · 층별 분할</option>
                 <option value="laser">레이저 커팅 · 판 두께 기준</option>
-                <option value="laser_floor">레이저 커팅 · 1층 = 1판</option>
+                <option value="laser_floor">레이저 커팅 · 층고 기준</option>
               </select>
             </div>
             <div id="floor-height-field" hidden>
               <label for="floor-height">층고 (m)</label>
               <input id="floor-height" type="number" min="1" max="20"
                      step="0.1" value="3" required disabled
-                     >
+                     aria-describedby="board-hint">
             </div>
+            <p id="board-hint" class="field-note board-hint" aria-live="polite" hidden></p>
             <div id="building-thickness-field" hidden>
               <label for="building-thickness">건물 판 두께 (mm)</label>
               <input id="building-thickness" type="number" min="0.1" max="100"
@@ -530,7 +531,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261109j").catch(error => {
+    import("./app.js?v=20261109p").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

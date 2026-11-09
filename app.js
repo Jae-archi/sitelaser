@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109d";
-import { Viewer3D } from "./viewer3d.js?v=20261109d";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109p";
+import { Viewer3D } from "./viewer3d.js?v=20261109p";
 import {
   zipSync,
   strToU8
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109d", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109p", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -393,11 +393,9 @@ const ignMap = new IGNMap($("#map"), {
     completedSteps.delete(1);  // new range: step 1 is not done any more
     $("#building-list").replaceChildren();
     $("#building-note").textContent = "대지 범위가 바뀌었습니다. 건물을 다시 불러오세요.";
-    $("#radius").value = ((bounds[2] - bounds[0]) / 2).toFixed(2);
+    $("#radius").value = Math.round((bounds[2] - bounds[0]) / 2);
     $("#range-note").textContent =
-      `한 변 길이 ${(bounds[2] - bounds[0]).toFixed(1)} m · ` +
-      `중심 좌표(프랑스 표준) ${((bounds[0] + bounds[2]) / 2).toFixed(1)}, ` +
-      `${((bounds[1] + bounds[3]) / 2).toFixed(1)}`;
+      `대지 ${Math.round(bounds[2] - bounds[0])} × ${Math.round(bounds[3] - bounds[1])} m`;
     invalidate();
     updateSettingsNotes();
   },
@@ -536,25 +534,84 @@ function updateMapStyle() {
 }
 // The photo ratio only means something when map and photo are overlaid.
 $("#map-style").onchange = () => {
-  $("#photo-opacity-field").hidden = $("#map-style").value !== "overlay";
+  // slider keeps its place (no layout jump); it is just inactive outside 겹쳐보기
+  const overlay = $("#map-style").value === "overlay";
+  $("#photo-opacity-field").classList.toggle("is-inactive", !overlay);
+  $("#photo-opacity").disabled = !overlay;
   updateMapStyle();
 };
+$("#photo-opacity-field").hidden = false;
+$("#photo-opacity-field").classList.add("is-inactive");
+$("#photo-opacity").disabled = true;
 $("#photo-opacity").oninput = updateMapStyle;
 
 const floorHeight = () => Number($("#floor-height").value) || 3;
 
 // "높이 23.6 m · 8층" — IGN floor count when known, otherwise estimated (약).
+// IGN BD TOPO "usage" -> short Korean
+const USAGE_KO = {
+  "Résidentiel": "주거", "Commercial et services": "상업", "Indifférencié": "미분류",
+  "Industriel": "산업", "Agricole": "농업", "Religieux": "종교", "Sportif": "체육",
+  "Annexe": "부속", "Administratif": "공공"
+};
+
+// One line: "건물 1 · 상업 · 20.0 m · 약 7층"
 function buildingText(building, index) {
-  const name = `건물 ${index + 1}${building.usage ? " · " + building.usage : ""}`;
+  const usage = USAGE_KO[building.usage] || building.usage || "";
+  const name = `건물 ${index + 1}${usage ? " · " + usage : ""}`;
   if (building.h === null) return `${name} · 높이 정보 없음`;
   const floors = building.floors
     ? `${building.floors}층`
     : `약 ${Math.max(1, Math.round(building.h / floorHeight()))}층`;
   const manual = building.manualFloors ? " (직접 입력)" : "";
-  // IGN storey count that gives an implausible storey height is flagged.
-  const doubt = !building.manualFloors && !building.floors && building.ignFloors
-    ? ` · IGN ${building.ignFloors}층 (확인 필요)` : "";
-  return `${name} · 높이 ${building.h.toFixed(1)} m · ${floors}${doubt}${manual}`;
+  return `${name} · ${building.h.toFixed(1)} m · ${floors}${manual}`;
+}
+
+// Second line, only when the storey count needs checking
+function buildingDoubt(building) {
+  if (building.manualFloors) return "";
+  if (building.h === null) return "높이를 모릅니다 · 층수를 입력하세요";
+  if (!building.floors && building.ignFloors) return `IGN 기록 ${building.ignFloors}층 · 확인 필요`;
+  return "";
+}
+
+// A point that is really inside the footprint (for the Google Maps pin):
+// area centroid if it lies inside, otherwise the midpoint of the widest
+// horizontal chord through the middle of the shape.
+function pointInside(building) {
+  const ring = building.polygon;
+  const inside = (x, y, r) => {
+    let c = false;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i], [xj, yj] = r[j];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const inShape = (x, y) => inside(x, y, ring) && !(building.holes || []).some(h => inside(x, y, h));
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x0, y0] = ring[i], [x1, y1] = ring[i + 1];
+    const f = x0 * y1 - x1 * y0;
+    a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f;
+  }
+  if (Math.abs(a) > 1e-9) {
+    cx /= 3 * a; cy /= 3 * a;
+    if (inShape(cx, cy)) return [cx, cy];
+  }
+  const ys = ring.map(p => p[1]);
+  const y = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const xs = [];
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x0, y0] = ring[i], [x1, y1] = ring[i + 1];
+    if ((y0 > y) !== (y1 > y)) xs.push(x0 + (y - y0) * (x1 - x0) / (y1 - y0));
+  }
+  xs.sort((p, q) => p - q);
+  let best = null;
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    if (!best || xs[i + 1] - xs[i] > best[1] - best[0]) best = [xs[i], xs[i + 1]];
+  }
+  return best ? [(best[0] + best[1]) / 2, y] : ring[0];
 }
 
 function renderBuildingList() {
@@ -582,13 +639,13 @@ function renderBuildingList() {
     locate.textContent = "지도에서 보기 ›";
     locate.onclick = () => focusBuilding(index, true);
     row.append(label, locate);
+    const extra = document.createElement("div");
+    extra.className = "building-extra";
 
     // Unknown or doubtful height: open the spot in Google Maps (satellite)
     // so the user can count the storeys themselves.
     if (building.h === null || (building.ignFloors && !building.floors)) {
-      const ring = building.polygon.slice(0, -1);
-      const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
-      const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+      const [cx, cy] = pointInside(building);
       const [lon, lat] = toWGS84(cx, cy);
       const maps = document.createElement("a");
       maps.className = "building-locate";
@@ -597,7 +654,7 @@ function renderBuildingList() {
       maps.target = "_blank";
       maps.rel = "noopener noreferrer";
       maps.textContent = "구글 지도에서 확인 ↗";
-      row.append(maps);
+      extra.append(maps);
     }
 
     // Missing height: let the user type the floor count; h = floors × 층고.
@@ -624,12 +681,21 @@ function renderBuildingList() {
           building.h = building.measuredH;
         }
         text.textContent = buildingText(building, index);
+        const why = row.querySelector(".building-doubt");
+        if (why) why.textContent = buildingDoubt(building) || "직접 입력한 층수";
         invalidate();
       };
       const unit = document.createElement("span");
       unit.textContent = "층";
       wrap.append(floorsInput, unit);
-      row.append(wrap);
+      extra.prepend(wrap);
+    }
+    if (extra.childElementCount) {
+      const why = document.createElement("span");
+      why.className = "building-doubt";
+      why.textContent = buildingDoubt(building);
+      extra.prepend(why);
+      row.append(extra);
     }
     fragment.append(row);
   });
@@ -1616,14 +1682,36 @@ function sheets2D3dm(rhino, drawings) {
   side.className = "ign-side";
   for (const child of [...panel.children]) if (child !== map) side.append(child);
   panel.append(side);
-  // Third column for the building list (shown once buildings are loaded).
+  // 건물 불러오기 right after 반경/정밀도, as the main action of this column
+  const load = $("#load-buildings");
+  const fields = side.querySelector(".grid.two");
+  if (load && fields) {
+    load.classList.add("primary", "load-primary");
+    fields.after(load);
+  }
+  // Third column: header (대지 크기 · 건물 수 · 모두 선택/해제) + list
   const list = document.createElement("div");
   list.className = "ign-list";
-  for (const id of ["building-note", "building-list"]) {
-    const el = $("#" + id);
-    if (el) list.append(el);
-  }
+  const head = document.createElement("div");
+  head.className = "list-head";
+  const headText = document.createElement("div");
+  headText.className = "list-head-text";
+  for (const id of ["range-note", "building-note"]) { const el = $("#" + id); if (el) headText.append(el); }
+  const headActions = document.createElement("div");
+  headActions.className = "list-head-actions";
+  for (const id of ["select-all", "select-none"]) { const el = $("#" + id); if (el) headActions.append(el); }
+  head.append(headText, headActions);
+  list.append(head);
+  const listEl = $("#building-list");
+  if (listEl) list.append(listEl);
   panel.append(list);
+  side.querySelector(".building-tools")?.remove();
+  // "대지 범위 ›" re-centres the map, so it lives on the map itself
+  const rangeView = $("#range-view");
+  if (rangeView) { rangeView.classList.add("map-corner-btn"); map.append(rangeView); }
+  // the long "지도를 눌러…" hint is shown only for notices
+  const mapNote = $("#map-note");
+  if (mapNote) mapNote.textContent = "";
 })();
 
 // One navigation row per step, same place on every screen:
@@ -1670,3 +1758,62 @@ function sheets2D3dm(rhino, drawings) {
 document.querySelector(".skip-link")?.addEventListener("click", event => {
   if (document.body.dataset.page === "0") { event.preventDefault(); showStep(1, true); }
 });
+
+// Short choices (≤ 3 options) as segmented controls instead of OS dropdowns.
+// The <select> stays (hidden) as the source of truth, so all logic is unchanged.
+for (const id of ["map-style", "orientation"]) {
+  const select = $("#" + id);
+  if (!select) continue;
+  const group = document.createElement("div");
+  group.className = "segmented";
+  group.setAttribute("role", "radiogroup");
+  const label = document.querySelector(`label[for="${id}"]`);
+  if (label) group.setAttribute("aria-label", label.textContent.trim());
+  const buttons = [...select.options].map(option => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.textContent = option.textContent;
+    b.onclick = () => {
+      if (select.disabled) return;
+      select.value = option.value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      sync();
+    };
+    group.append(b);
+    return [b, option];
+  });
+  const sync = () => {
+    for (const [b, option] of buttons) {
+      const on = select.value === option.value;
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on ? 0 : -1;
+      b.disabled = select.disabled;
+    }
+  };
+  select.addEventListener("change", sync);
+  new MutationObserver(sync).observe(select, { attributes: true, attributeFilter: ["disabled"] });
+  select.classList.add("visually-hidden-select");
+  select.after(group);
+  sync();
+}
+
+
+// Laser · one storey per board: tell which board thickness to buy.
+// board (mm) = storey height (m) × 1000 / scale
+function updateBoardHint() {
+  const hint = $("#board-hint");
+  if (!hint) return;
+  const on = $("#building-mode").value === "laser_floor";
+  hint.hidden = !on;
+  if (!on) return;
+  const h = Number($("#floor-height").value), scale = Number($("#scale").value);
+  if (!(h > 0 && scale > 0)) { hint.textContent = ""; return; }
+  const t = h * 1000 / scale;
+  hint.textContent = `층고 ${+h.toFixed(2)} m · 1:${scale} → 건물 판 두께 ${+t.toFixed(2)} mm`;
+}
+for (const id of ["#building-mode", "#floor-height", "#scale"]) {
+  $(id).addEventListener("input", updateBoardHint);
+  $(id).addEventListener("change", updateBoardHint);
+}
+updateBoardHint();
