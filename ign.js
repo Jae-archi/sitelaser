@@ -378,8 +378,15 @@ export class IGNMap {
     );
 
     for (const layer of [this.plan, this.photo]) {
-      layer.on("tileerror", () => {
-        this.onNotice("지도 타일을 불러오지 못했습니다. 연결 상태를 확인하세요.");
+      // A few missing tiles at the edge of a layer are normal. Warn only
+      // when a whole view finished loading with no tile at all.
+      let loaded = 0, failed = 0;
+      layer.on("loading", () => { loaded = 0; failed = 0; });
+      layer.on("tileload", () => { loaded += 1; });
+      layer.on("tileerror", () => { failed += 1; });
+      layer.on("load", () => {
+        this.onNotice(failed > 0 && loaded === 0
+          ? "지도 타일을 불러오지 못했습니다. 연결 상태를 확인하세요." : "");
       });
     }
 

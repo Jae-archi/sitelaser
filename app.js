@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109x";
-import { Viewer3D } from "./viewer3d.js?v=20261109x";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zk";
+import { Viewer3D } from "./viewer3d.js?v=20261109zk";
 import {
   zipSync,
   strToU8
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109x", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109zk", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -712,7 +712,16 @@ function renderBuildingList() {
   });
   $("#building-list").replaceChildren(fragment);
   // desktop: open the third column when there is a list to show
-  $("#panel-ign").classList.toggle("has-buildings", ignMap.buildings.length > 0);
+  const panel = $("#panel-ign");
+  const count = ignMap.buildings.length;
+  if (count && count !== panel.dataset.listCount) {
+    // stagger the rows in only when a new list arrives, not on every re-render
+    panel.classList.add("list-entering");
+    clearTimeout(panel._enterTimer);
+    panel._enterTimer = setTimeout(() => panel.classList.remove("list-entering"), 1200);
+  }
+  panel.dataset.listCount = String(count);
+  panel.classList.toggle("has-buildings", count > 0);
 }
 
 function focusBuilding(index, zoom) {
@@ -1113,7 +1122,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
       const option = document.createElement("option");
       option.value = name;
       const number = Number(name.match(/\d+/)[0]);
-      if (name.startsWith("support_")) option.textContent = `건물 받침 · 지형판 ${number}단`;
+      if (name.startsWith("support_")) option.textContent = `건물 받침 ${number}`;
       else if (name.startsWith("building_")) option.textContent = `건물 판 ${number}`;
       else option.textContent = `지형판 ${number} · 높이 ${layers[number - 1].z.toFixed(1)} m`;
       return option;
@@ -1188,7 +1197,7 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   }
   if (formats.has("pdf")) await addSheetPdfs(files, drawings);
   if (formats.has("3dm")) {
-    const response = await fetch(new URL("./rhino-text.3dm?v=20261109x", import.meta.url));
+    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zk", import.meta.url));
     if (!response.ok) throw new Error("Rhino 도면 텍스트 양식을 불러오지 못했습니다.");
     const template = new Uint8Array(await response.arrayBuffer());
     files["sheets_2d.3dm"] = sheets2D3dm(rhino, drawings.filter(drawing => !supports.includes(drawing)), template);
@@ -1214,10 +1223,10 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
     "terrain_번호_두께mm / building_번호_두께mm: 판별 제작 도면.",
     "PDF는 용지 실치수입니다. 출력할 때 배율 100%를 선택하세요.",
     "sheets_2d.3dm: 모든 판의 2D 제작 도면. 절단·각인·참고 글자 레이어를 분리했습니다.",
-    supports.length
-      ? "support_단번호_두께mm: 건물 아래 빈틈을 채우는 별도 받침 도면. 받침은 같은 번호의 지형판과 같은 높이에 놓습니다."
+    drawings.some(drawing => drawing.support_count)
+      ? "건물 받침: 별도 도면 없이 해당 지형판 도면 안에 함께 있습니다. 판이 없는 빈자리(건물 아래 빈틈)에 같은 두께로 그려져 있으니 그 자리에서 잘라 쓰세요."
       : "현재 건물 바닥 아래에 자동 생성할 받침 조각이 없습니다.",
-    "받침의 B 번호를 지형판 번호와 맞추세요. B27-1, B27-2는 아래에서 위로 쌓는 순서입니다.",
+    "받침은 건물 번호(B)로 찾으세요. B27-1, B27-2는 아래에서 위로 쌓는 순서입니다.",
     "model.3dm: 지형판과 건물의 닫힌 폴리서피스. 단위 mm, Z 위.",
     "buildings.stl: 건물만 포함. 단위 mm로 해석할 것. 건물이 없으면 생략.",
     "STL과 3DM은 동일한 조립 좌표를 사용합니다.",
@@ -1465,7 +1474,10 @@ function setupInterface() {
   let pinch = null;
   const apply = () => {
     // Resize instead of CSS scale() so the SVG is re-rasterised crisply.
-    img.style.width = `${s * 100}%`;
+    // Fit = the whole drawing inside the stage, whichever side is the tighter one.
+    const ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0;
+    const fitW = ratio ? Math.min(stage.clientWidth - 24, (stage.clientHeight - 24) * ratio) : stage.clientWidth - 24;
+    img.style.width = `${s * fitW}px`;
     img.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
     if (zoomLabel) zoomLabel.textContent = `${Math.round(s * 100)}%`;
   };
@@ -1489,6 +1501,10 @@ function setupInterface() {
     '<button type="button" data-z="in" aria-label="확대">+</button>' +
     '<button type="button" data-z="fit">맞춤</button>';
   stage.after(bar);
+  // the plate picker lives next to the zoom controls, below the drawing
+  const picker = $("#plate-select");
+  picker.setAttribute("aria-label", "도면 선택");
+  bar.prepend(picker);
   const zoomLabel = bar.querySelector(".zoom-label");
   bar.addEventListener("click", e => {
     const z = e.target.closest("button")?.dataset.z;
@@ -1539,6 +1555,7 @@ function setupInterface() {
   stage.addEventListener("dblclick", reset);
   // New plate selected or regenerated → back to fit.
   img.addEventListener("load", reset);
+  window.addEventListener("resize", () => { if (!img.hidden) apply(); });
 })();
 
 

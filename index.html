@@ -14,7 +14,7 @@
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261109x">
+  <link rel="stylesheet" href="./style.css?v=20261109zk">
 
   <script type="importmap">
   {
@@ -31,6 +31,21 @@
           src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
   <script defer
           src="https://cdn.jsdelivr.net/npm/rhino3dm@8.35.0/rhino3dm.min.js"></script>
+  <script>
+    /* Laptops: scale the whole desktop layout down so each step fits the screen height. */
+    (function () {
+      var REF = 1020, MIN = 0.6, root = document.documentElement;
+      function fit() {
+        var z = 1;
+        if (window.innerWidth >= 1024 && window.innerHeight < REF) z = Math.max(MIN, window.innerHeight / REF);
+        root.style.zoom = z < 1 ? String(z) : "";
+        root.classList.toggle("is-scaled", z < 1);
+        if (z < 1) root.style.setProperty("--vh100", Math.round(window.innerHeight / z) + "px"); else root.style.removeProperty("--vh100");
+      }
+      fit();
+      window.addEventListener("resize", fit);
+    })();
+  </script>
 </head>
 
 <body>
@@ -298,11 +313,11 @@
               <label for="paper">용지</label>
               <select id="paper" aria-describedby="sheet-fit">
                 <option>A0</option>
-                <option selected>A1</option>
+                <option>A1</option>
                 <option>A2</option>
                 <option>A3</option>
                 <option>A4</option>
-                <option value="site">대지 범위에 맞춤</option>
+                <option value="site" selected>대지 범위에 맞춤</option>
                 <option value="custom">사용자 설정</option>
               </select>
             </div>
@@ -552,7 +567,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261109x").catch(error => {
+    import("./app.js?v=20261109zk").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

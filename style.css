@@ -936,7 +936,7 @@ noscript {
 /* One screen per step (body[data-page]: 0 intro, 1-4 steps) */
 body[data-page] .intro,
 body[data-page] .step-panel { display: none; }
-body[data-page="0"] .intro { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 160px); }
+body[data-page="0"] .intro { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(var(--vh100, 100vh) - 160px); }
 body[data-page="1"] #step-panel-1,
 body[data-page="2"] #step-panel-2,
 body[data-page="3"] #step-panel-3,
@@ -1002,7 +1002,7 @@ body.is-loading .status-card { visibility: hidden; }
 
   /* step 3 */
   body[data-page="3"] #viewer,
-  body[data-page="3"] .plate-stage { height: calc(100vh - 420px); min-height: 320px; }
+  body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 420px); min-height: 320px; }
 
   /* step 4 */
   body[data-page="4"] .export-contents { margin: 8px 0; }
@@ -1013,7 +1013,7 @@ body.is-loading .status-card { visibility: hidden; }
 }
 @media (min-width: 1024px) and (min-height: 640px) {
   body[data-page] footer { display: none; }
-  body[data-page="0"] .intro { min-height: calc(100vh - 96px); }
+  body[data-page="0"] .intro { min-height: calc(var(--vh100, 100vh) - 96px); }
   /* step 2: four columns, tighter fields, actions on one line */
   body[data-page="2"] #step-panel-2 .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 20px; }
   body[data-page="2"] #step-panel-2 .grid > div > label { margin-bottom: 4px; }
@@ -1024,7 +1024,7 @@ body.is-loading .status-card { visibility: hidden; }
   body[data-page="3"] .viewer-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
   body[data-page="3"] .viewer-options > * { margin: 0; }
   body[data-page="3"] #viewer-help, body[data-page="3"] #review-controls .note { display: none; }
-  body[data-page="3"] #viewer, body[data-page="3"] .plate-stage { height: calc(100vh - 470px); }
+  body[data-page="3"] #viewer, body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 470px); }
   body[data-page="3"] #review-controls { margin-top: 8px; }
 }
 @media (min-width: 1024px) and (min-height: 640px) {
@@ -1045,8 +1045,8 @@ body.is-loading .status-card { visibility: hidden; }
   body[data-page="3"] #review-controls, body[data-page="3"] #step-panel-3 > .section-actions {
     display: inline-flex; vertical-align: middle; margin: 8px 8px 0 0; border: 0; padding: 0;
   }
-  body[data-page="3"] #viewer { height: calc(100vh - 490px); }
-  body[data-page="3"] .plate-stage { height: calc(100vh - 560px); }
+  body[data-page="3"] #viewer { height: calc(var(--vh100, 100vh) - 490px); }
+  body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 560px); }
   body[data-page="3"] .zoom-bar { margin-top: 6px; }
 }
 
@@ -1152,33 +1152,9 @@ body[data-page="4"] .export-layout .export-card.line-style { border: 1px solid v
   }
   body[data-page="3"] #viewer-help br { display: none; }
 }
-/* Short desktop screens (e.g. 1366 x 768): compact headings and spacing */
-@media (min-width: 1024px) and (min-height: 640px) and (max-height: 860px) {
-  body[data-page]:not([data-page="0"]) .section-intro .eyebrow,
-  body[data-page]:not([data-page="0"]) .section-intro .subhead { display: none; }
-  body[data-page]:not([data-page="0"]) .section-intro { margin-bottom: 10px; }
-  body[data-page]:not([data-page="0"]) .section-intro h3 { font-size: 26px; margin: 0; }
-  body[data-page]:not([data-page="0"]) .step-panel { padding-top: 12px; padding-bottom: 84px; }
-  body[data-page]:not([data-page="0"]) .step-nav { margin-top: 10px; }
-  body[data-page="1"] .source-tabs { margin-bottom: 10px; }
-  body[data-page="2"] .settings-groups { gap: 8px; }
-  body[data-page="2"] .settings-group h4 { margin-bottom: 4px; }
-  body[data-page="2"] #settings-help { display: none !important; }
-  body[data-page="3"] #viewer { height: calc(100vh - 400px); }
-  body[data-page="3"] .plate-stage { height: calc(100vh - 470px); }
-  body[data-page="4"] .export-card { padding: 14px 18px; }
-  body[data-page="4"] .export-files li { padding: 6px 0; }
-  body[data-page="4"] .line-preview { height: 64px; margin-top: 8px; }
-  body[data-page="4"] .line-row { min-height: 44px; }
-}
-@media (min-width: 1024px) and (min-height: 640px) and (max-height: 860px) {
-  body[data-page="3"] #viewer-help { display: none !important; }
-  body[data-page="3"] #viewer { height: calc(100vh - 462px); }
-  body[data-page="3"] .plate-stage { height: calc(100vh - 505px); }
-}
-@media (min-width: 1024px) and (min-height: 861px) {
-  body[data-page="3"] #viewer { height: calc(100vh - 536px); }
-  body[data-page="3"] .plate-stage { height: calc(100vh - 600px); }
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="3"] #viewer { height: calc(var(--vh100, 100vh) - 536px); }
+  body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 500px); }
 }
 
 /* Korean line breaking: never split a word, balance short multi-line text
@@ -1286,7 +1262,7 @@ select { border-radius: 12px; }
   body[data-page="1"] main { width: min(1680px, calc(100% - 48px)); }
   #step-panel-1 { width: 100%; }
   #panel-ign {
-    --map-size: clamp(380px, calc(100vh - 330px), 760px);
+    --map-size: clamp(380px, calc(var(--vh100, 100vh) - 330px), 760px);
     display: grid;
     grid-template-columns: minmax(0, var(--map-size)) minmax(400px, 460px);
     justify-content: center;
@@ -1341,3 +1317,85 @@ select { border-radius: 12px; }
 }
 
 .board-hint { grid-column: 1 / -1; margin: 0; font-size: 14px; font-weight: 600; color: var(--ink, #1d1d1f); }
+
+
+/* Step 1: background selector and photo opacity share one baseline.
+   Labels line up at the top, controls start at the same height. */
+body[data-page="1"] .map-appearance { align-items: start; }
+body[data-page="1"] .map-appearance > div > label { display: block; margin: 0 0 4px; line-height: 1.4; }
+body[data-page="1"] #photo-opacity-field input[type="range"] { display: block; width: 100%; margin: 0; height: 46px; }
+body[data-page="1"] #photo-opacity-field .range-ends { margin-top: -6px; }
+
+/* Scaled laptop view: the map leaves room for title, tabs and the next button */
+@media (min-width: 1024px) and (min-height: 640px) {
+  .is-scaled #panel-ign { --map-size: clamp(380px, calc(var(--vh100) - 455px), 760px); }
+}
+
+/* Step 3, 2D: the plate picker sits in the zoom bar (see app.js), so the
+   drawing gets the height the old "도면 선택" row used. */
+#view-panel-2d .viewer-options { display: none; }
+.zoom-bar #plate-select {
+  margin: 0; width: auto; min-width: 220px; max-width: 320px; min-height: 40px;
+  padding-block: 0; font-size: 15px;
+}
+
+/* Step 1: the building list slides in beside the controls instead of popping in. */
+@keyframes ign-list-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes ign-row-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.list-entering .building-row { animation: ign-row-in .42s cubic-bezier(.2, 0, 0, 1) both; }
+.list-entering .building-row:nth-child(1) { animation-delay: 0ms; }
+.list-entering .building-row:nth-child(2) { animation-delay: 40ms; }
+.list-entering .building-row:nth-child(3) { animation-delay: 80ms; }
+.list-entering .building-row:nth-child(4) { animation-delay: 120ms; }
+.list-entering .building-row:nth-child(5) { animation-delay: 160ms; }
+.list-entering .building-row:nth-child(6) { animation-delay: 200ms; }
+.list-entering .building-row:nth-child(7) { animation-delay: 240ms; }
+.list-entering .building-row:nth-child(8) { animation-delay: 280ms; }
+.list-entering .building-row:nth-child(9) { animation-delay: 320ms; }
+.list-entering .building-row:nth-child(10) { animation-delay: 360ms; }
+.list-entering .building-row:nth-child(11) { animation-delay: 400ms; }
+.list-entering .building-row:nth-child(12) { animation-delay: 440ms; }
+
+@media (min-width: 1200px) and (min-height: 640px) {
+  #panel-ign {
+    column-gap: 0;
+    grid-template-columns: minmax(300px, var(--map-size)) 460px 0px;
+    transition: grid-template-columns .55s cubic-bezier(.2, 0, 0, 1);
+  }
+  #panel-ign.has-buildings { grid-template-columns: minmax(300px, var(--map-size)) 460px 484px; }
+  #panel-ign > #map { margin-right: 24px; }
+  #panel-ign > .ign-list,
+  #panel-ign.has-buildings > .ign-list {
+    display: flex; flex-direction: column; grid-column: 3; align-self: stretch; contain: size;
+    box-sizing: border-box; padding: 0; overflow: hidden; gap: 8px;
+  }
+  #panel-ign > .ign-list > * { width: 460px; min-width: 460px; margin-left: 24px; box-sizing: border-box; }
+  #panel-ign > .ign-list {
+    opacity: 0; visibility: hidden; transform: translateX(16px);
+    transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s;
+  }
+  #panel-ign.has-buildings > .ign-list {
+    opacity: 1; visibility: visible; transform: none;
+    transition: opacity .45s ease .12s, transform .55s cubic-bezier(.2, 0, 0, 1) .12s, visibility 0s;
+  }
+}
+@media (max-width: 1199px), (max-height: 639px) {
+  #panel-ign.has-buildings > .ign-list { animation: ign-list-in .45s cubic-bezier(.2, 0, 0, 1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #panel-ign, #panel-ign > .ign-list, #panel-ign.has-buildings > .ign-list { transition: none !important; animation: none !important; }
+  .list-entering .building-row { animation: none; }
+}
+
+/* Step 3: tighter gaps below the drawing give it more height */
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="3"] .zoom-bar { margin-top: 4px; }
+  body[data-page="3"] .step-nav { margin-top: 2px; }
+  body[data-page="3"] #step-panel-3 { padding-bottom: 80px; }
+  body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 490px); }
+}
+@media (min-width: 1024px) and (min-height: 640px) {
+  body[data-page="3"] #review-controls { display: none; }
+  body[data-page="3"] #step-panel-3 { padding-bottom: 64px; }
+  body[data-page="3"] .plate-stage { height: calc(var(--vh100, 100vh) - 440px); }
+}

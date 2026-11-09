@@ -301,7 +301,7 @@ def _dxf(cut, engrave, texts):
     return stream.getvalue()
 
 
-def _save_sheet(output, name, thickness, cut, engrave, layout, label, numbers, checks=()):
+def _save_sheet(output, name, thickness, cut, engrave, layout, label, numbers, checks=(), support_count=0):
     texts = list(numbers)
     if layout["caption"]:
         inset, baseline = (4, 4) if layout["fitted"] else (MARGIN_MM, 10)
@@ -313,6 +313,7 @@ def _save_sheet(output, name, thickness, cut, engrave, layout, label, numbers, c
         "name": name, "thickness_mm": thickness, "width": layout["width"],
         "height": layout["height"], "cut": cut, "engrave": engrave,
         "texts": texts, "cap_height_ratio": CAP_HEIGHT_RATIO, "placement_checks": list(checks),
+        "support_count": support_count,
     })
 
 
@@ -458,18 +459,29 @@ def render_sheets(project, style=None):
             if shapely.intersection(footprint, plates[upper_idx], grid_size=1e-4).area > 0:
                 checks[seat].append(f"B{b_num}: 윗 지형판과 몸체가 겹침")
                 break
+    supports = _support_pieces(buildings, footprints, plates, elevations, layout)
     for index, (_, _, cut, engrave, label) in enumerate(terrain):
         engrave_mm = [_mm(path, layout) for path in _exposed_engraving(engrave, surfaces[index])]
+        parts = supports.get(index, [])
+        # A support lies where this plate is absent (building footprint minus
+        # the plate), i.e. in the waste of the same board and the same
+        # thickness, so it is cut from that waste with no overlap.
+        extra_cut = [_mm(ring, layout) for piece, _, _ in parts for ring in rings(piece)]
+        extra_labels = [mark for _, _, mark in parts if mark]
+        extra_checks = [f"{text}: 받침 번호를 새길 공간이 좁음"
+                        for _, text, mark in parts if mark is None or mark[3] < .6]
         _save_sheet(output, f"plate_{index + 1:02d}", settings["thickness_mm"],
-                    cut, engrave_mm, layout, label, numbers[index], checks[index])
+                    cut + extra_cut, engrave_mm, layout, label,
+                    list(numbers[index]) + extra_labels, list(checks[index]) + extra_checks,
+                    support_count=len(parts))
     if settings["building_mode"] in {"laser", "laser_floor"}:
-        output.update(_building_sheets(buildings, layout, settings))
-    _support_sheets(output, buildings, footprints, plates, elevations, bounds, layout, settings)
+        output.update(_building_sheets(buildings, layout, settings,
+                                       frame=_mm(list(box(*bounds).exterior.coords), layout)))
     return output
 
 
-def _support_sheets(output, buildings, footprints, plates, elevations, bounds, layout, settings):
-    """Fill unoccupied slabs up to each building's seating height."""
+def _support_pieces(buildings, footprints, plates, elevations, layout):
+    """Support pieces per terrain plate index: [(polygon, "B#-k", number mark)]."""
     by_layer = {}
     for number, (b, footprint) in enumerate(zip(buildings, footprints), 1):
         base = b.get("base", elevations[0])
@@ -477,30 +489,13 @@ def _support_sheets(output, buildings, footprints, plates, elevations, bounds, l
         _, levels = building_support_plan(footprint, plates, seat=seat)
         for ordinal, support in enumerate(levels, 1):
             text = f"B{number}-{ordinal}" if len(levels) > 1 else f"B{number}"
-            parts = polygons(even_odd(support["cut"]))
-            by_layer.setdefault(support["layer"], []).extend((piece, text) for piece in parts)
-
-    frame = box(*bounds).boundary
-    thickness = settings["thickness_mm"]
-    for index, parts in sorted(by_layer.items()):
-        cut = [_mm(ring, layout) for piece, _ in parts for ring in rings(piece)]
-        cut_edges = shapely.unary_union([piece.boundary for piece, _ in parts], grid_size=1e-4)
-        guide = shapely.difference(frame, cut_edges, grid_size=1e-4)
-        engrave = [_mm(path, layout) for path in paths(guide)]
-        labels = []
-        checks = []
-        for piece, text in parts:
-            mark = _number_mark(piece, text, layout, fit=True)
-            if mark:
-                labels.append(mark)
-            if mark is None or mark[3] < .6:
-                checks.append(f"{text}: 받침 번호를 새길 공간이 좁음")
-        name = f"support_{index + 1:02d}"
-        label = f"BUILDING SUPPORTS | L{index + 1:02d} | t={thickness:g} mm | 1:{settings['scale']:g}"
-        _save_sheet(output, name, thickness, cut, engrave, layout, label, labels, checks)
+            for piece in polygons(even_odd(support["cut"])):
+                mark = _number_mark(piece, text, layout, fit=True)
+                by_layer.setdefault(support["layer"], []).append((piece, text, mark))
+    return by_layer
 
 
-def _building_sheets(buildings, layout, settings):
+def _building_sheets(buildings, layout, settings, frame=None):
     """Laser sheets for buildings: building i gets ceil(h_model / t) layers.
 
     Sheet k holds the footprint of every building taller than k layers, in
@@ -537,7 +532,8 @@ def _building_sheets(buildings, layout, settings):
             f"BUILDINGS {'FLOOR' if per_floor else 'L'}{k + 1:02d} | 1:{scale:g} | t={t:g} mm | "
             "glue on terrain | print 100%"
         )
-        _save_sheet(out, f"building_{k + 1:02d}", t, cut, [], layout, label, labels)
+        # site border engraved like the terrain sheets, for registration on the board
+        _save_sheet(out, f"building_{k + 1:02d}", t, cut, [frame] if frame else [], layout, label, labels)
     return out
 
 
