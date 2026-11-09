@@ -14,7 +14,7 @@
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261109zn">
+  <link rel="stylesheet" href="./style.css?v=20261109zo">
 
   <script type="importmap">
   {
@@ -288,7 +288,7 @@
                 <option value="print">3D 프린트 · 일체형</option>
                 <option value="print_floor">3D 프린트 · 층별 분할</option>
                 <option value="laser">레이저 커팅 · 판 두께 기준</option>
-                <option value="laser_floor">레이저 커팅 · 층고 기준</option>
+                <option value="laser_floor" selected>레이저 커팅 · 층고 기준</option>
               </select>
             </div>
             <div id="floor-height-field" hidden>
@@ -567,7 +567,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261109zn").catch(error => {
+    import("./app.js?v=20261109zo").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

@@ -1408,3 +1408,18 @@ body[data-page="1"] #photo-opacity-field .range-ends { margin-top: -6px; }
   .status-card .inline { flex: 1; min-width: 0; margin: 0; }
   .status-card p { margin: 0; }
 }
+
+/* Settings fields: dropdowns and number inputs share one height. Safari ignores
+   min-height on native selects, so the dropdown is drawn by us (no native
+   appearance) with its own chevron. */
+.settings-group .group-fields input:not([type="checkbox"]),
+.settings-group .group-fields select {
+  height: 52px; min-height: 52px; box-sizing: border-box; padding-block: 0;
+}
+.settings-group .group-fields select:not(.visually-hidden-select) {
+  -webkit-appearance: none; appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%236e6e73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+}
