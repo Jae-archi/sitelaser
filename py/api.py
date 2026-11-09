@@ -354,11 +354,34 @@ def _clip_buildings(buildings, base):
     return result
 
 
+def _seat_on_highest_plate(buildings, layer_geometries):
+    """Raise each building's base to the highest plate its footprint reaches.
+
+    IGN gives the lowest ground level under a building. On a slope the uphill
+    side is covered by higher plates, so the body would sink into them. The
+    building instead rests on the highest plate it touches (more than a sliver)
+    and the gap on the downhill side is filled by support pieces.
+    """
+    for building in buildings:
+        footprint = Polygon(building["polygon"], building["holes"])
+        if footprint.is_empty or footprint.area <= 0:
+            continue
+        shapely.prepare(footprint)
+        threshold = max(0.25, footprint.area * 0.02)
+        for z, geometry in reversed(layer_geometries):
+            if building["base"] is not None and z <= building["base"] + 1e-8:
+                break
+            if shapely.intersection(footprint, geometry, grid_size=GRID).area > threshold:
+                building["base"] = float(z)
+                break
+
+
 def _project(layer_geometries, buildings, settings, road_lines=()):
     if not layer_geometries:
         raise ValueError("생성된 판재가 없습니다.")
     base = layer_geometries[0][1]
     buildings = _clip_buildings(buildings, base)
+    _seat_on_highest_plate(buildings, layer_geometries)
     marks = list(road_lines)
     for building in buildings:
         polygon = Polygon(building["polygon"], building["holes"])
