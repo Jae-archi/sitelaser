@@ -940,7 +940,8 @@ body[data-page="0"] .intro { display: flex; flex-direction: column; align-items:
 body[data-page="1"] #step-panel-1,
 body[data-page="2"] #step-panel-2,
 body[data-page="3"] #step-panel-3,
-body[data-page="4"] #step-panel-4 { display: block; animation: page-in .35s ease both; }
+body[data-page="4"] #step-panel-4,
+body[data-page="5"] #step-panel-5 { display: block; animation: page-in .35s ease both; }
 body[data-page="0"] .status-card { display: none; }
 @keyframes page-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { body[data-page] .step-panel { animation: none !important; } }
@@ -1423,3 +1424,18 @@ body[data-page="1"] #photo-opacity-field .range-ends { margin-top: -6px; }
   background-repeat: no-repeat;
   background-position: right 16px center;
 }
+
+/* Step 5: what to do with the downloaded files */
+.done-steps { list-style: none; counter-reset: done; margin: 0 auto; padding: 0; max-width: 640px; display: grid; gap: 12px; text-align: left; }
+.done-steps li {
+  counter-increment: done; display: grid; grid-template-columns: 36px 1fr; gap: 2px 14px; align-items: start;
+  padding: 16px 20px; border: 1px solid var(--line, #d2d2d7); border-radius: 18px;
+}
+.done-steps li::before {
+  content: counter(done); grid-row: 1 / span 2; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--ink, #1d1d1f); color: var(--paper, #fff); font-weight: 600;
+}
+.done-steps strong { font-size: 17px; }
+.done-steps span { color: var(--muted, #6e6e73); font-size: 15px; line-height: 1.55; }
+.done-steps .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 2px; }
+.step-panel.done-section .step-nav, #step-panel-5 .section-actions { margin-top: 24px; }

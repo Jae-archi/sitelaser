@@ -14,7 +14,7 @@
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261109zq">
+  <link rel="stylesheet" href="./style.css?v=20261109zr">
 
   <script type="importmap">
   {
@@ -539,6 +539,41 @@
       </div>
     </section>
 
+    <section id="step-panel-5" class="step-panel content-section done-section"
+             aria-labelledby="step-title-5">
+      <div class="section-intro">
+        <p class="eyebrow">05 · 완료</p>
+        <h3 id="step-title-5" tabindex="-1">파일을 받았습니다</h3>
+        <p class="subhead">받은 ZIP으로 이렇게 만드세요.</p>
+      </div>
+
+      <ol class="done-steps">
+        <li>
+          <strong>도면 열기</strong>
+          <span>PDF는 실제 크기 그대로입니다. 출력할 때 배율을 100%로 하세요.</span>
+        </li>
+        <li>
+          <strong>선 구분</strong>
+          <span><i id="done-cut-swatch" class="swatch"></i> 절단선은 자르고, <i id="done-engrave-swatch" class="swatch"></i> 각인선은 새깁니다.</span>
+        </li>
+        <li>
+          <strong>지형판 쌓기</strong>
+          <span>번호 순서대로, 1번이 맨 아래입니다. 판에 새겨진 선이 다음 판의 자리입니다.</span>
+        </li>
+        <li>
+          <strong>받침과 건물</strong>
+          <span>받침 조각은 B번호 건물 아래에 끼우고, 건물 판은 같은 B번호 자리에 쌓아 붙입니다. B27-1, B27-2는 아래에서 위 순서입니다.</span>
+        </li>
+      </ol>
+
+      <div class="section-actions">
+        <button id="new-site" type="button" class="primary full-width">새 대지 만들기</button>
+        <button type="button" class="full-width secondary-action" data-go-step="4">
+          <span aria-hidden="true">‹</span> 이전 · 파일 받기
+        </button>
+      </div>
+    </section>
+
     <section class="status-card" aria-label="처리 상태">
       <div class="status-meta">
         <p id="engine-state" class="note" role="status" aria-live="polite">
@@ -567,7 +602,7 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261109zq").catch(error => {
+    import("./app.js?v=20261109zr").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";

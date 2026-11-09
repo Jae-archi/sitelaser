@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zq";
-import { Viewer3D } from "./viewer3d.js?v=20261109zq";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109zr";
+import { Viewer3D } from "./viewer3d.js?v=20261109zr";
 import {
   zipSync,
   strToU8
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109zq", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109zr", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -1199,7 +1199,7 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   }
   if (formats.has("pdf")) await addSheetPdfs(files, drawings);
   if (formats.has("3dm")) {
-    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zq", import.meta.url));
+    const response = await fetch(new URL("./rhino-text.3dm?v=20261109zr", import.meta.url));
     if (!response.ok) throw new Error("Rhino 도면 텍스트 양식을 불러오지 못했습니다.");
     const template = new Uint8Array(await response.arrayBuffer());
     files["sheets_2d.3dm"] = sheets2D3dm(rhino, drawings.filter(drawing => !supports.includes(drawing)), template);
@@ -1260,6 +1260,10 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   status("다운로드를 시작했습니다.");
   completedSteps.add(4);
   syncSteps();
+  // finished: show what to do with the files
+  $("#done-cut-swatch").style.background = $("#cut-color").value;
+  $("#done-engrave-swatch").style.background = $("#engrave-color").value;
+  showStep(5, true);
 }, "export");
 
 $("#cancel").onclick = () => {
@@ -1295,7 +1299,7 @@ function showLocalError(id, message) {
 }
 
 function syncSteps() {
-  $("#step-count").textContent = `단계 ${currentStep}/4`;
+  $("#step-count").textContent = `단계 ${Math.min(currentStep, 4)}/4`;
   $("#settings-controls").disabled = busy || !completedSteps.has(1);
   $("#settings-help").textContent = completedSteps.has(1)
     ? "설정을 바꾸면 모형을 다시 만들어야 합니다."
@@ -1327,11 +1331,11 @@ function showPage(page) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-const STEP_NAMES = ["", "대지", "설정", "확인", "파일 받기"];
+const STEP_NAMES = ["", "대지", "설정", "확인", "파일 받기", "완료"];
 function showStep(step, focus = false) {
   currentStep = step;
   showPage(step);
-  $("#engine-state").textContent = `단계 ${step} / 4 · ${STEP_NAMES[step]}`;
+  $("#engine-state").textContent = step > 4 ? "완료" : `단계 ${step} / 4 · ${STEP_NAMES[step]}`;
   syncSteps();
   // The scroll-reveal fade never fires for a panel that was display:none.
   $("#step-panel-" + step).classList.remove("reveal-pending");
@@ -1394,6 +1398,7 @@ function setupInterface() {
     };
   }
   $("#site-next").onclick = continueFromSite;
+  $("#new-site").onclick = () => { if (!busy) location.reload(); };
   $("#review-next").onclick = () => {
     if (busy || !project || !sheetFiles) return;
     completedSteps.add(3);
