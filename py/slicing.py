@@ -131,13 +131,11 @@ def even_odd(ring_list):
         piece = Polygon(snapped)
         if not piece.is_valid:
             piece = shapely.make_valid(piece)
-            polys = [g for g in getattr(piece, "geoms", [piece]) if g.geom_type == "Polygon"]
-            if len(polys) != 1:
-                continue
-            piece = polys[0]
-        if piece.is_empty or piece.area <= EPS * EPS:
-            continue
-        pieces.append(piece)
+        # Snapping can pinch a narrow neck into two parts: keep every part
+        # instead of silently dropping the whole ring.
+        for poly in getattr(piece, "geoms", [piece]):
+            if poly.geom_type == "Polygon" and not poly.is_empty and poly.area > EPS * EPS:
+                pieces.append(poly)
     if not pieces:
         raise ValueError("유효한 절단 링이 없습니다.")
     for i, a in enumerate(pieces):
@@ -253,7 +251,7 @@ def mesh_surface(meshes, factor):
         raise ValueError("지형 메시 면이 없습니다.")
 
     footprints = [Polygon([v[:2] for v in t]) for t in triangles]
-    footprint = unary_union(footprints)
+    footprint = shapely.unary_union(footprints, grid_size=1e-4)
     total_area = sum(p.area for p in footprints)
     if total_area - footprint.area > max(EPS * EPS, total_area * 1e-10):
         raise ValueError("XY에서 겹치는 메시 면이 있어 단일 지형으로 볼 수 없습니다.")
@@ -303,7 +301,10 @@ def _above(triangle, level):
         inside_b = b[2] >= level
         if inside_a:
             output.append(a[:2])
-        if inside_a != inside_b:
+        # Interpolate only on a strict crossing: a vertex exactly on the level
+        # is already added above; adding t=1 again creates a ~1e-10 m
+        # duplicate at Lambert-93 magnitudes that crashes Pyodide's GEOS.
+        if (a[2] < level < b[2]) or (b[2] < level < a[2]):
             # Order the edge canonically so adjacent faces calculate the
             # identical intersection in the same floating-point direction.
             p, q = sorted((a, b))
@@ -360,7 +361,7 @@ def surface_layers(triangles, interval):
         if not pieces:
             # A peak that reduces to a point has no physical cutting area.
             continue
-        geometry = unary_union(pieces)
+        geometry = shapely.unary_union(pieces, grid_size=1e-4)
         if not geometry.is_valid:
             raise ValueError("지형 절단 결과의 위상이 유효하지 않습니다.")
         result.append((level, geometry))
@@ -624,7 +625,7 @@ def curve_layers(boundary_feature, contours, selection, interval):
             for b in pieces[:i]:
                 if a.intersects(b):
                     raise ValueError("같은 고도의 폐곡선이 겹치거나 접합니다.")
-        region = unary_union(pieces)
+        region = shapely.unary_union(pieces, grid_size=1e-4)
         if not sources[-1][1].covers(region):
             raise ValueError(
                 "고도가 높아질수록 영역이 포함되지 않습니다. "

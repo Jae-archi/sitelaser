@@ -201,9 +201,13 @@ export class Viewer3D {
         if (mode === "print_floor") n = building.floors || Math.max(1, Math.round(building.h / floorH));
         else if (mode === "laser_floor") n = Math.max(1, Math.round(building.h / floorH));
         else if (mode === "laser") n = Math.max(1, Math.ceil(building.h / boardM - 1e-6));
-        const step = mode === "laser" ? boardM : building.h / n;
+        // laser modes: every board has the real board thickness (as cut);
+        // print modes: storeys share the exact height
+        const laserMode = mode === "laser" || mode === "laser_floor";
+        const step = mode === "laser" ? boardM
+          : mode === "laser_floor" ? floorH * 1 : building.h / n;
         for (let k = 0; k < n; k++) {
-          const depth = Math.min(step, building.h - k * step);
+          const depth = laserMode ? step : Math.min(step, building.h - k * step);
           if (depth <= 0) break;
           const mesh = this.addMesh(
             buildingShape(building, this.origin),
@@ -227,7 +231,9 @@ export class Viewer3D {
   stackBase(sourceBase) {
     // A building rests on the top of the last source-height plate below it.
     // Its height remains in source metres, without vertical exaggeration.
-    let ordinal = -1;
+    // at least on top of the bottom plate, even if IGN's ground level is
+    // slightly below the lowest DEM sample
+    let ordinal = 0;
     for (let i = 0; i < this.layers.length; i++) {
       if (this.layers[i].z <= sourceBase + 1e-8) ordinal = i;
       else break;

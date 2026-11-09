@@ -14,7 +14,7 @@ from collections.abc import Mapping
 
 import ezdxf
 import shapely
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Polygon
 
 if __package__:
     from .slicing import EPS, even_odd, integer, number
@@ -236,7 +236,7 @@ def _svg(cut, engrave, layout, label):
     return "\n".join(parts)
 
 
-def _dxf(cut, engrave, label):
+def _dxf(cut, engrave, label, marks=()):
     doc = ezdxf.new("R2010")
     doc.units = 4
     doc.header["$MEASUREMENT"] = 1
@@ -260,6 +260,10 @@ def _dxf(cut, engrave, label):
         "height": 3.5,
         "insert": (MARGIN_MM, 10),
     })
+    for (mx, my), text in marks:  # building numbers, not cut
+        model.add_text(text, dxfattribs={
+            "layer": "LABELS_NO_CUT", "height": 1.6, "insert": (mx, my),
+        })
     stream = io.StringIO()
     doc.write(stream)
     return stream.getvalue()
@@ -300,7 +304,7 @@ def render_sheets(project, style=None):
             raise ValueError("절단선이 Project 범위 밖입니다.")
         if previous_geometry is not None:
             extra = shapely.difference(geometry, previous_geometry, grid_size=1e-4)
-            if extra.area > max(1e-6, previous_geometry.area * 1e-8):
+            if extra.area > max(1e-6, geometry.length * 1e-4):  # snap slivers only
                 raise ValueError("누적 판재의 포함 관계가 잘못되었습니다.")
         # Real IGN footprints and contours often run past a plate edge:
         # clip engrave lines to the plate instead of rejecting the project.
@@ -368,10 +372,9 @@ def _building_sheets(buildings, layout, settings):
                 continue
             rings = [b["polygon"], *b.get("holes", [])]
             cut.extend(_mm([list(p[:2]) for p in ring], layout) for ring in rings)
-            ring = b["polygon"]
-            cx = sum(p[0] for p in ring[:-1]) / max(1, len(ring) - 1)
-            cy = sum(p[1] for p in ring[:-1]) / max(1, len(ring) - 1)
-            labels.append((_mm([[cx, cy]], layout)[0], f"B{number_}"))
+            # a point guaranteed inside the piece (not in a courtyard)
+            rep = Polygon(b["polygon"], b.get("holes", [])).representative_point()
+            labels.append((_mm([[rep.x, rep.y]], layout)[0], f"B{number_}"))
         label = (
             f"BUILDINGS {'FLOOR' if per_floor else 'L'}{k + 1:02d} | 1:{scale:g} | t={t:.3g} mm | "
             "glue on terrain | print 100%"
@@ -379,7 +382,8 @@ def _building_sheets(buildings, layout, settings):
         name = f"building_{k + 1:02d}"
         svg = _svg(cut, [], layout, label)
         _drawings.append({"name": name, "width": layout["width"], "height": layout["height"],
-                          "cut": cut, "engrave": [], "label": label})
+                          "cut": cut, "engrave": [], "label": label,
+                          "marks": [[x, y, t] for (x, y), t in labels]})
         marks = "".join(
             f'<text x="{x:.3f}" y="{layout["height"] - y:.3f}" font-size="1.6" '
             f'text-anchor="middle" font-family="sans-serif" fill="#285cd2">{txt}</text>'
@@ -389,7 +393,7 @@ def _building_sheets(buildings, layout, settings):
             '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">',
             '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">' + marks, 1,
         )
-        out[name + ".dxf"] = _dxf(cut, [], label)
+        out[name + ".dxf"] = _dxf(cut, [], label, labels)
     return out
 
 

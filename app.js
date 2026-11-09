@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109a";
-import { Viewer3D } from "./viewer3d.js?v=20261109a";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109d";
+import { Viewer3D } from "./viewer3d.js?v=20261109d";
 import {
   zipSync,
   strToU8
@@ -34,7 +34,7 @@ let operationKind = "generate";
 let elapsedTimer = null;
 let startedAt = 0;
 
-// Progress: messages like "표고 850 / 1681점" give a real percentage and an
+// Progress: messages like "지형 높이 850 / 1681점" give a real percentage and an
 // ETA from the measured rate; other stages show the moving (indeterminate) bar.
 let measured = null;
 let loadingOverlay = null;
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109a", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109d", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -104,29 +104,29 @@ class PythonClient {
       clearTimeout(pending.timeout);
 
       if (message?.ok === true) {
-        engineStateSink.textContent = "엔진 준비됨";
+        engineStateSink.textContent = "준비 완료";
         pending.resolve(message.result);
       }
-      else pending.reject(new Error(message?.error || "Python 응답 오류"));
+      else pending.reject(new Error(message?.error || "도면 계산 중 오류가 발생했습니다."));
     };
 
     worker.onerror = event => {
       event.preventDefault();
-      this.reset(new Error(event.message || "Python Worker를 시작하지 못했습니다."));
+      this.reset(new Error(event.message || "도면 생성기를 시작하지 못했습니다. 페이지를 새로고침하세요."));
     };
     worker.onmessageerror = () => {
-      this.reset(new Error("Python Worker 응답을 읽지 못했습니다."));
+      this.reset(new Error("도면 계산 결과를 읽지 못했습니다. 다시 시도해 주세요."));
     };
   }
 
   call(cmd, args = {}, transfer = []) {
     if (this.pending) {
-      return Promise.reject(new Error("Python 작업이 이미 실행 중입니다."));
+      return Promise.reject(new Error("이미 모형을 만드는 중입니다."));
     }
     this.createWorker();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.reset(new Error("Python 처리 시간이 초과되었습니다. 범위를 줄여주세요."));
+        this.reset(new Error("계산 시간이 초과되었습니다. 대지 범위를 줄이거나 지형 정밀도 값을 키우세요."));
       }, 300000);
       this.pending = { resolve, reject, timeout };
       try {
@@ -142,7 +142,7 @@ class PythonClient {
   reset(error = new DOMException("취소되었습니다.", "AbortError")) {
     this.worker?.terminate();
     this.worker = null;
-    engineStateSink.textContent = "엔진 준비 중 · 다음 생성 시 다시 시작";
+    engineStateSink.textContent = "도면 생성기 준비 중 · 모형 생성 시 자동 시작";
     if (this.pending) {
       clearTimeout(this.pending.timeout);
       this.pending.reject(error);
@@ -157,7 +157,7 @@ let skippedNote = "";
 async function rhinoEngine() {
   if (!rhinoPromise) {
     if (typeof globalThis.rhino3dm !== "function") {
-      throw new Error("rhino3dm 라이브러리를 불러오지 못했습니다.");
+      throw new Error("3DM 파일 도구를 불러오지 못했습니다. 네트워크를 확인하세요.");
     }
     rhinoPromise = globalThis.rhino3dm({
       locateFile: filename => RHINO_BASE + filename
@@ -212,9 +212,9 @@ function linkFrom(source) {
   const iv = Number($("#interval").value);
   if (!(scale > 0)) return;
   if (source === "interval" && iv > 0) {
-    $("#thickness").value = +(iv * 1000 / scale).toFixed(2);
+    $("#thickness").value = +(iv * 1000 / scale).toFixed(4);
   } else if (t > 0) {
-    $("#interval").value = +(t * scale / 1000).toFixed(2);
+    $("#interval").value = +(t * scale / 1000).toFixed(4);
   }
   updateSettingsNotes();
 }
@@ -224,7 +224,14 @@ $("#interval").addEventListener("input", () => linkFrom("interval"));
 $("#link-scale").addEventListener("change", () => { linkFrom("thickness"); invalidate(); });
 queueMicrotask(() => linkFrom("thickness"));  // after module init
 $("#building-thickness").addEventListener("change", () => invalidate());
-$("#floor-height").addEventListener("change", () => invalidate());
+$("#floor-height").addEventListener("change", () => {
+  // typed floor counts on buildings without a measured height follow 층고
+  for (const b of ignMap.buildings) {
+    if (b.manualFloors && b.measuredH == null) b.h = b.manualFloors * floorHeight();
+  }
+  if (buildingsReady) renderBuildingList();
+  invalidate();
+});
 
 function availablePaper(config) {
   let width, height;
@@ -247,7 +254,7 @@ function checkFit(bounds, config) {
   return {
     fits: x <= width + 1e-6 && y <= height + 1e-6,
     text: `모형 ${x.toFixed(1)} × ${y.toFixed(1)} mm / ` +
-      `사용 가능 ${width} × ${height} mm`
+      `용지 크기 ${width} × ${height} mm`
   };
 }
 
@@ -257,9 +264,9 @@ function updateSettingsNotes() {
   const interval = Number($("#interval").value);
   const physicalHeight = thickness * scale / 1000;
   $("#stack-note").textContent =
-    `판 한 장 = 실제 높이 ${+physicalHeight.toFixed(2)} m` +
+    `지형판 1장 = 실제 높이 ${+physicalHeight.toFixed(2)} m` +
     (Math.abs(physicalHeight - interval) > 1e-6
-      ? " 지형 높이 간격과 달라 적층 모형의 수직 비율이 달라집니다."
+      ? " 등고 간격과 판 두께 비례가 달라 모형의 수직 비율이 과장됩니다."
       : "");
 
   const bounds = project?.bounds || (source === "ign" ? ignMap.bounds : null);
@@ -269,16 +276,16 @@ function updateSettingsNotes() {
     const height = (bounds[3] - bounds[1]) * 1000 / scale;
     const format = value => Number(value.toFixed(1)).toLocaleString("ko-KR");
     summary.textContent =
-      `완성 크기 ${format(width)} × ${format(height)} mm · ` +
-      (project ? `판 ${project.layers.length}장` : "판 수는 생성 후 표시");
+      `모형 크기 ${format(width)} × ${format(height)} mm · ` +
+      (project ? `판 ${project.layers.length}장` : "지형판 수는 생성 후 표시");
   } else {
     summary.textContent =
-      "범위와 축척을 정하면 완성 크기가 보입니다.";
+      "대지 범위와 축척을 정하면 모형 크기가 표시됩니다.";
   }
 
   const note = $("#sheet-fit");
   if (!bounds || !(scale > 0)) {
-    note.textContent = "범위와 축척을 정하면 용지에 들어가는지 알려 드립니다.";
+    note.textContent = "대지 범위와 축척을 정하면 용지 안에 들어가는지 표시됩니다.";
     note.classList.remove("error");
     return;
   }
@@ -289,7 +296,7 @@ function updateSettingsNotes() {
     paper_height_mm: Number($("#paper-height").value)
   };
   const fit = checkFit(bounds, config);
-  note.textContent = fit.text + (fit.fits ? "" : " · 용지에 안 들어갑니다. 범위를 줄이거나 축척을 키우세요.");
+  note.textContent = fit.text + (fit.fits ? "" : " · 용지보다 큽니다. 대지 범위를 줄이거나 축척 분모를 키우세요.");
   note.classList.toggle("error", !fit.fits);
 }
 
@@ -383,19 +390,22 @@ async function operation(task, kind = "generate") {
 const ignMap = new IGNMap($("#map"), {
   onRange(bounds) {
     buildingsReady = false;
+    completedSteps.delete(1);  // new range: step 1 is not done any more
     $("#building-list").replaceChildren();
-    $("#building-note").textContent = "범위가 바뀌었습니다. 건물을 다시 불러오세요.";
+    $("#building-note").textContent = "대지 범위가 바뀌었습니다. 건물을 다시 불러오세요.";
     $("#radius").value = ((bounds[2] - bounds[0]) / 2).toFixed(2);
     $("#range-note").textContent =
-      `한 변 ${(bounds[2] - bounds[0]).toFixed(1)} m · ` +
-      `중심 L93 ${((bounds[0] + bounds[2]) / 2).toFixed(1)}, ` +
+      `한 변 길이 ${(bounds[2] - bounds[0]).toFixed(1)} m · ` +
+      `중심 좌표(프랑스 표준) ${((bounds[0] + bounds[2]) / 2).toFixed(1)}, ` +
       `${((bounds[1] + bounds[3]) / 2).toFixed(1)}`;
     invalidate();
     updateSettingsNotes();
   },
   onSelection(selected) {
     $("#building-note").textContent =
-      `${ignMap.buildings.length}개 중 ${selected.length}개 선택`;
+      ignMap.buildings.length
+        ? `건물 ${ignMap.buildings.length}개 중 ${selected.length}개 선택`
+        : "이 범위에는 등록된 건물이 없습니다. 지형만 만들어집니다.";
     for (const checkbox of $("#building-list").querySelectorAll('input[type="checkbox"]')) {
       checkbox.checked = ignMap.selected.has(Number(checkbox.dataset.index));
     }
@@ -409,7 +419,7 @@ const ignMap = new IGNMap($("#map"), {
 try {
   viewer = new Viewer3D($("#viewer"));
 } catch (error) {
-  $("#viewer").textContent = "3D 화면을 시작하지 못했습니다: " + error.message;
+  $("#viewer").textContent = "3D 미리보기를 불러오지 못했습니다: " + error.message;
   $("#run").disabled = true;
   throw error;
 }
@@ -483,7 +493,7 @@ async function performSearch() {
         cancelSearch();
         $("#search").value = place.label;
         $("#suggestions").replaceChildren();
-        $("#search-note").textContent = "지도에 표시했습니다. 범위를 확인하세요.";
+        $("#search-note").textContent = "지도에 표시했습니다. 대지 범위를 확인하세요.";
         ignMap.setCenter(...place.l93);
         ignMap.fitRange();
       };
@@ -524,7 +534,11 @@ function updateMapStyle() {
     Number($("#photo-opacity").value) / 100
   );
 }
-$("#map-style").onchange = updateMapStyle;
+// The photo ratio only means something when map and photo are overlaid.
+$("#map-style").onchange = () => {
+  $("#photo-opacity-field").hidden = $("#map-style").value !== "overlay";
+  updateMapStyle();
+};
 $("#photo-opacity").oninput = updateMapStyle;
 
 const floorHeight = () => Number($("#floor-height").value) || 3;
@@ -532,14 +546,14 @@ const floorHeight = () => Number($("#floor-height").value) || 3;
 // "높이 23.6 m · 8층" — IGN floor count when known, otherwise estimated (약).
 function buildingText(building, index) {
   const name = `건물 ${index + 1}${building.usage ? " · " + building.usage : ""}`;
-  if (building.h === null) return `${name} · 높이 없음`;
+  if (building.h === null) return `${name} · 높이 정보 없음`;
   const floors = building.floors
     ? `${building.floors}층`
     : `약 ${Math.max(1, Math.round(building.h / floorHeight()))}층`;
   const manual = building.manualFloors ? " (직접 입력)" : "";
   // IGN storey count that gives an implausible storey height is flagged.
   const doubt = !building.manualFloors && !building.floors && building.ignFloors
-    ? ` · IGN ${building.ignFloors}층 (의심)` : "";
+    ? ` · IGN ${building.ignFloors}층 (확인 필요)` : "";
   return `${name} · 높이 ${building.h.toFixed(1)} m · ${floors}${doubt}${manual}`;
 }
 
@@ -578,7 +592,8 @@ function renderBuildingList() {
       const [lon, lat] = toWGS84(cx, cy);
       const maps = document.createElement("a");
       maps.className = "building-locate";
-      maps.href = `https://www.google.com/maps/@?api=1&map_action=map&center=${lat.toFixed(6)},${lon.toFixed(6)}&zoom=20&basemap=satellite`;
+      // q = pin on the building, t=k = satellite, z = zoom
+      maps.href = `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}&t=k&z=20`;
       maps.target = "_blank";
       maps.rel = "noopener noreferrer";
       maps.textContent = "구글 지도에서 확인 ↗";
@@ -619,6 +634,8 @@ function renderBuildingList() {
     fragment.append(row);
   });
   $("#building-list").replaceChildren(fragment);
+  // desktop: open the third column when there is a list to show
+  $("#panel-ign").classList.toggle("has-buildings", ignMap.buildings.length > 0);
 }
 
 function focusBuilding(index, zoom) {
@@ -633,7 +650,7 @@ function focusBuilding(index, zoom) {
 ignMap.onFocus = index => focusBuilding(index, false);
 
 async function loadBuildings(signal) {
-  if (!ignMap.bounds) throw new Error("지도에서 범위를 먼저 선택하세요.");
+  if (!ignMap.bounds) throw new Error("지도에서 대지 범위를 먼저 지정하세요.");
   const buildings = await fetchBuildings([...ignMap.bounds], signal, status);
   if (signal.aborted) throw new DOMException("취소되었습니다.", "AbortError");
   ignMap.setBuildings(buildings);
@@ -644,7 +661,9 @@ async function loadBuildings(signal) {
 $("#load-buildings").onclick = () => operation(async signal => {
   await loadBuildings(signal);
   setMapMode("building");
-  status("건물을 불러왔습니다. 모형에 넣을 건물을 고르세요.");
+  status(ignMap.buildings.length
+    ? "건물을 불러왔습니다. 모형에 포함할 건물을 고르세요."
+    : "이 범위에는 등록된 건물이 없습니다. 다음 단계로 넘어가세요.");
 }, "buildings");
 $("#select-all").onclick = () => ignMap.selectAll(true);
 $("#select-none").onclick = () => ignMap.selectAll(false);
@@ -655,6 +674,8 @@ const syncPaper = () => {
   $("#paper-custom").hidden = !custom;
   $("#paper-width").disabled = $("#paper-height").disabled = !custom;
   $("#orientation").disabled = custom;
+  // custom sizes are typed as width × height, so direction has no meaning
+  $("#orientation").closest("div").hidden = custom;
 };
 $("#paper").addEventListener("change", syncPaper);
 syncPaper();
@@ -676,27 +697,27 @@ $("#file").onchange = () => {
 function finitePoint(point, dimensions, name) {
   if (!Array.isArray(point) || point.length < dimensions ||
       !point.slice(0, dimensions).every(Number.isFinite)) {
-    throw new Error(`${name} 좌표 형식이 올바르지 않습니다.`);
+    throw new Error(`${name}의 좌표 형식이 올바르지 않습니다.`);
   }
 }
 
 function validateProject(value, expectedSettings) {
-  if (!value || typeof value !== "object") throw new Error("프로젝트 결과가 없습니다.");
+  if (!value || typeof value !== "object") throw new Error("생성된 모형 데이터가 없습니다.");
   if (!Array.isArray(value.bounds) || value.bounds.length !== 4 ||
       !value.bounds.every(Number.isFinite) ||
       value.bounds[2] <= value.bounds[0] || value.bounds[3] <= value.bounds[1]) {
-    throw new Error("프로젝트 범위가 올바르지 않습니다.");
+    throw new Error("대지 범위 데이터가 올바르지 않습니다.");
   }
   if (!Array.isArray(value.layers) || !value.layers.length ||
       !Array.isArray(value.buildings)) {
-    throw new Error("프로젝트 레이어 또는 건물 목록이 올바르지 않습니다.");
+    throw new Error("지형판 또는 건물 데이터가 올바르지 않습니다.");
   }
   if (value.layers.length > 2000) {
-    throw new Error("지형판이 2,000장을 넘습니다. 높이 간격을 늘려주세요.");
+    throw new Error("지형판이 2,000장을 넘습니다. 등고 간격(m)을 늘려 주세요.");
   }
   for (const key of Object.keys(expectedSettings)) {
     if (value.settings?.[key] !== expectedSettings[key]) {
-      throw new Error(`Python 결과 설정이 입력과 다릅니다: ${key}`);
+      throw new Error(`생성된 모형 설정이 입력값과 다릅니다: ${key}`);
     }
   }
 
@@ -704,7 +725,7 @@ function validateProject(value, expectedSettings) {
   const elevations = new Set();
   function line(points, minimum, name) {
     if (!Array.isArray(points) || points.length < minimum) {
-      throw new Error(`${name} 점 개수가 부족합니다.`);
+      throw new Error(`${name}의 점 개수가 부족합니다.`);
     }
     points.forEach(point => finitePoint(point, 2, name));
   }
@@ -713,7 +734,7 @@ function validateProject(value, expectedSettings) {
     if (!Number.isInteger(layer.index) || !Number.isFinite(layer.z) ||
         indices.has(layer.index) || elevations.has(layer.z) ||
         !Array.isArray(layer.cut) || !Array.isArray(layer.engrave)) {
-      throw new Error("레이어 번호·높이·경로 형식이 올바르지 않습니다.");
+      throw new Error("지형판 번호·높이·윤곽선 데이터가 올바르지 않습니다.");
     }
     indices.add(layer.index);
     elevations.add(layer.z);
@@ -722,13 +743,13 @@ function validateProject(value, expectedSettings) {
   }
 
   for (const building of value.buildings) {
-    line(building.polygon, 3, "건물 외곽");
+    line(building.polygon, 3, "건물 외곽선");
     if (!Array.isArray(building.holes) ||
         !(Number.isFinite(building.h) && building.h > 0) ||
         !Number.isFinite(building.base)) {
-      throw new Error("건물 높이·기준 표고·중정 형식이 올바르지 않습니다.");
+      throw new Error("건물 높이·바닥 높이·중정 데이터가 올바르지 않습니다.");
     }
-    building.holes.forEach(points => line(points, 3, "건물 중정"));
+    building.holes.forEach(points => line(points, 3, "건물 중정선"));
   }
   return value;
 }
@@ -771,18 +792,31 @@ async function read3DM(buffer) {
     ];
     const match = units.find(([name]) =>
       enumNumber(rhino.UnitSystem[name]) === unit);
-    if (!match) throw new Error("3DM 단위가 없거나 지원하지 않는 단위입니다.");
+    if (!match) throw new Error("3DM 파일에 단위 정보가 없거나 지원하지 않는 단위입니다.");
 
     const factor = match[1];
     const geometry = { units: "m", curves: [], meshes: [] };
     const objects = file.objects();
     const unsupported = [];
+    // Layer index -> layer NAME (BOUNDARY / CONTOUR / ROAD …). The Python
+    // side recognises roles by name; passing the number broke every 3DM.
+    const layerNames = new Map();
+    const table = file.layers();
+    for (let i = 0; i < table.count; i++) {
+      const layer = table.get(i);
+      try {
+        const full = String(layer.fullPath || layer.name || "");
+        layerNames.set(i, full.split("::").pop());
+      } finally {
+        layer.delete?.();
+      }
+    }
 
     for (let i = 0; i < objects.count; i++) {
       const object = objects.get(i);
       const item = object.geometry();
       const attributes = object.attributes();
-      const layerIndex = attributes.layerIndex;
+      const layerIndex = layerNames.get(attributes.layerIndex) ?? String(attributes.layerIndex);
 
       try {
         if (item instanceof rhino.Mesh) {
@@ -800,7 +834,7 @@ async function read3DM(buffer) {
             if (![3, 4].includes(face.length) ||
                 face.some(index => !Number.isInteger(index) ||
                   index < 0 || index >= vertices.length)) {
-              throw new Error(`3DM 객체 ${i + 1}의 메시 면이 올바르지 않습니다.`);
+              throw new Error(`3DM 객체 ${i + 1}의 메시 면을 읽을 수 없습니다.`);
             }
             faces.push(face);
           }
@@ -843,14 +877,14 @@ async function read3DM(buffer) {
 
     if (unsupported.length) {
       throw new Error(
-        "폴리라인·직선·메시 이외의 3DM 객체가 있습니다: " +
+        "지원하지 않는 3DM 객체가 포함되어 있습니다: " +
         unsupported.slice(0, 20).join(", ") +
         (unsupported.length > 20 ? ` 외 ${unsupported.length - 20}개` : "") +
-        ". 필요한 객체를 Rhino에서 명시적으로 변환한 뒤 다시 업로드하세요."
+        ". Rhino에서 폴리라인이나 메시로 변환한 뒤 다시 올려 주세요."
       );
     }
     if (!geometry.curves.length && !geometry.meshes.length) {
-      throw new Error("3DM에 처리할 곡선이나 메시가 없습니다.");
+      throw new Error("3DM 파일에 사용할 선이나 메시가 없습니다.");
     }
     return geometry;
   } finally {
@@ -860,7 +894,7 @@ async function read3DM(buffer) {
 
 function validateSheets(files) {
   if (!files || typeof files !== "object" || Array.isArray(files)) {
-    throw new Error("지형판 파일 결과가 올바르지 않습니다.");
+    throw new Error("지형판 도면 데이터가 올바르지 않습니다.");
   }
   const names = Object.keys(files);
   if (!names.length) throw new Error("생성된 지형판 파일이 없습니다.");
@@ -868,20 +902,20 @@ function validateSheets(files) {
   for (const name of names) {
     // plate_XX = terrain plates; building_XX = laser-cut building layers.
     if (!/^(plate|building)_\d+\.(svg|dxf)$/.test(name) || typeof files[name] !== "string") {
-      throw new Error(`지형판 파일 이름 또는 내용이 올바르지 않습니다: ${name}`);
+      throw new Error(`지형판 도면 파일이 올바르지 않습니다: ${name}`);
     }
   }
   const svgNames = names.filter(name => name.endsWith(".svg"));
   if (svgNames.filter(n => n.startsWith("plate_")).length !== project.layers.length) {
-    throw new Error("지형판 SVG 수와 프로젝트 레이어 수가 다릅니다.");
+    throw new Error("생성된 도면 수와 지형판 수가 일치하지 않습니다.");
   }
   for (const name of svgNames) {
     if (!(name.replace(/\.svg$/, ".dxf") in files)) {
-      throw new Error(`${name}에 대응하는 DXF가 없습니다.`);
+      throw new Error(`${name}에 해당하는 DXF 파일이 없습니다.`);
     }
   }
   if (names.filter(name => name.endsWith(".dxf")).length !== svgNames.length) {
-    throw new Error("지형판 SVG와 DXF 개수가 다릅니다.");
+    throw new Error("SVG 도면과 DXF 도면의 개수가 일치하지 않습니다.");
   }
   // terrain plates first, then building layers, each in number order
   const key = n => (n.startsWith("building_") ? 1000 : 0) + Number(n.match(/\d+/)[0]);
@@ -904,7 +938,7 @@ function showPlate() {
 $("#plate-preview").onerror = () => {
   $("#plate-preview").hidden = true;
   $("#plate-empty").hidden = false;
-  $("#plate-empty").textContent = "SVG 미리보기를 표시하지 못했습니다.";
+  $("#plate-empty").textContent = "도면 미리보기를 불러오지 못했습니다.";
 };
 $("#plate-select").onchange = showPlate;
 
@@ -930,18 +964,18 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
 
   try {
     if (source === "ign") {
-      if (!ignMap.bounds) throw new Error("지도에서 범위를 선택하세요.");
+      if (!ignMap.bounds) throw new Error("지도에서 대지 범위를 지정하세요.");
       if (!buildingsReady) {
         throw new Error("먼저 건물을 불러오세요.");
       }
       if (!$("#grid-step").reportValidity()) {
-        throw new Error("표고 샘플 간격을 확인하세요.");
+        throw new Error("지형 정밀도(m) 값을 확인하세요.");
       }
 
       const fit = checkFit(ignMap.bounds, config);
-      if (!fit.fits) throw new Error(fit.text + " · 용지에 안 들어갑니다. 범위를 줄이거나 축척을 키우세요.");
+      if (!fit.fits) throw new Error(fit.text + " · 용지보다 큽니다. 대지 범위를 줄이거나 축척 분모를 키우세요.");
 
-      status("선택한 범위의 표고를 조회합니다.");
+      status("선택한 대지의 지형 높이를 불러오는 중");
       const terrain = await fetchTerrain(
         [...ignMap.bounds],
         Number($("#grid-step").value),
@@ -951,7 +985,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
       );
       ensureCurrent();
       skippedNote = terrain.skippedNoHeight
-        ? ` 높이를 모르는 건물 ${terrain.skippedNoHeight}개는 뺐습니다.`
+        ? ` 높이 정보가 없는 건물 ${terrain.skippedNoHeight}개는 제외했습니다.`
         : "";
       result = await python.call("from_terrain", {
         dem: terrain.dem, buildings: terrain.buildings, settings: config
@@ -969,7 +1003,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
         throw new Error("DXF 또는 3DM 파일을 선택하세요.");
       }
 
-      status("입력 파일을 읽습니다.");
+      status("도면 파일을 읽는 중");
       const buffer = await file.arrayBuffer();
       ensureCurrent();
 
@@ -991,7 +1025,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     const fit = checkFit(project.bounds, config);
     if (!fit.fits) throw new Error(fit.text + " · 축척을 조정하세요.");
 
-    status("지형판 SVG와 DXF를 생성합니다.");
+    status("레이저 도면(SVG·DXF)을 만드는 중");
     sheetFiles = await python.call("sheets");
     ensureCurrent();
     const names = validateSheets(sheetFiles);
@@ -1042,14 +1076,15 @@ function download(bytes, name) {
 $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   if (!project || !sheetFiles) throw new Error("먼저 모형을 만드세요.");
   // Re-render the sheets with the chosen cut/engrave colours and line width.
-  status("선 색상과 굵기를 적용합니다.");
-  sheetFiles = await python.call("sheets", { style: {
+  status("선 색상과 굵기를 적용하는 중");
+  // send the project too: a restarted worker no longer holds it
+  sheetFiles = await python.call("sheets", { project, style: {
     cut_color: $("#cut-color").value,
     engrave_color: $("#engrave-color").value,
     line_width_mm: Number($("#line-width").value)
   } });
   ensureCurrent();
-  status("3DM과 ZIP을 준비합니다.");
+  status("3DM과 ZIP 파일을 준비하는 중");
   const rhino = await rhinoEngine();
   ensureCurrent();
 
@@ -1115,7 +1150,8 @@ $("#cancel").onclick = () => {
   operationController?.abort();
   operationController = null;
   python.reset();
-  invalidate();
+  // cancelling an export keeps the finished model
+  if (operationKind !== "export") invalidate();
   setBusy(false);
   status("취소했습니다.");
 };
@@ -1156,7 +1192,6 @@ function syncSteps() {
     const current = step === currentStep;
     const done = completedSteps.has(step);
     button.dataset.done = String(done && !current);
-    button.setAttribute("aria-expanded", "true");
     if (current) button.setAttribute("aria-current", "step");
     else button.removeAttribute("aria-current");
     button.querySelector(".step-state").textContent =
@@ -1171,10 +1206,11 @@ function syncSteps() {
 // One screen at a time: page 0 = intro, 1-4 = steps (no long scroll).
 function showPage(page) {
   document.body.dataset.page = String(page);
+  if (page === 0) $("#step-button-1")?.removeAttribute("aria-current");
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-const STEP_NAMES = ["", "대지", "설정", "확인", "내보내기"];
+const STEP_NAMES = ["", "대지", "설정", "확인", "파일 받기"];
 function showStep(step, focus = false) {
   currentStep = step;
   showPage(step);
@@ -1196,7 +1232,7 @@ function continueFromSite() {
   if (busy) return;
   let message = "";
   if (source === "ign") {
-    if (!ignMap.bounds) message = "지도에서 범위를 먼저 선택하세요.";
+    if (!ignMap.bounds) message = "지도에서 대지 범위를 먼저 지정하세요.";
     else if (!buildingsReady) {
       message = "먼저 건물을 불러오세요.";
     } else if (!$("#grid-step").reportValidity()) return;
@@ -1300,15 +1336,15 @@ function setupInterface() {
   }
 
   syncSteps();
-  selectView("3d");
+  selectView("2d");  // 2D cut sheets first: that is what gets made
   // No worker init command is exposed by the supplied PythonClient.
   // Start the worker early without sending an undocumented command.
   try {
     python.createWorker();
-    engineStateSink.textContent = "엔진 준비 중 · 첫 생성 시 초기화 확인";
+    engineStateSink.textContent = "도면 생성기 준비 중";
   } catch (error) {
     engineStateSink.textContent =
-      "엔진 사전 준비 실패 · 생성 시 재시도: " + error.message;
+      "도면 생성기 준비 지연 · 모형 생성 시 다시 시도합니다: " + error.message;
   }
 }
 
@@ -1436,7 +1472,7 @@ loadingOverlay = (() => {
   // [test, label, from %, to %] per operation kind
   const STAGES = {
     generate: [
-      [/표고|DEM|높이를? 조회|지형 데이터/, "지형 높이를 불러오는 중", 3, 65],
+      [/표고|DEM|높이를? 조회|지형 높이|지형 데이터/, "지형 높이를 불러오는 중", 3, 65],
       [/Python|numpy|DXF 라이브러리|모듈|엔진|실행 환경/, "계산 준비 중", 65, 78],
       [/파일을? 읽|해석|불러온 파일/, "도면 파일을 읽는 중", 65, 80],
       [/SVG|DXF를|도면/, "제작 도면을 만드는 중", 90, 99],
@@ -1470,10 +1506,17 @@ loadingOverlay = (() => {
         render();
         el.hidden = false;
         document.body.classList.add("is-loading");
+        for (const node of document.querySelectorAll("body > header, body > main")) node.inert = true;
+        el.querySelector(".loading-cancel").focus();
         timer = setInterval(tick, 200);
       } else {
         shown = 100; render();
-        setTimeout(() => { if (!active) { el.hidden = true; document.body.classList.remove("is-loading"); } }, 250);
+        setTimeout(() => {
+          if (active) return;
+          el.hidden = true;
+          document.body.classList.remove("is-loading");
+          for (const node of document.querySelectorAll("body > header, body > main")) node.inert = false;
+        }, 250);
       }
     },
     message(message) {
@@ -1510,12 +1553,20 @@ function sheets2D3dm(rhino, drawings) {
     layer.color = color;
     if (parentId) layer.parentLayerId = parentId;
     const index = file.layers().add(layer);
-    return { index, id: file.layers().get(index).id };
+    const added = file.layers().get(index);
+    const id = added.id;
+    added.delete?.();
+    layer.delete?.();
+    return { index, id };
   };
   const polyline = (points, dx, dy) => {
     const pl = new rhino.Polyline(points.length);
-    for (const [x, y] of points) pl.add(x + dx, y + dy, 0);
-    return pl.toPolylineCurve();
+    try {
+      for (const [x, y] of points) pl.add(x + dx, y + dy, 0);
+      return pl.toPolylineCurve();
+    } finally {
+      pl.delete?.();
+    }
   };
   const GAP = 50, PER_ROW = 4;
   let x = 0, y = 0, rowHeight = 0;
@@ -1530,18 +1581,30 @@ function sheets2D3dm(rhino, drawings) {
     };
     const add = (geometry, layer) => {
       const attributes = new rhino.ObjectAttributes();
-      attributes.layerIndex = layer.index;
-      file.objects().add(geometry, attributes);
+      try {
+        attributes.layerIndex = layer.index;
+        file.objects().add(geometry, attributes);
+      } finally {
+        attributes.delete?.();
+        geometry.delete?.();
+      }
     };
     for (const path of d.cut) add(polyline(path, x, y), layers.CUT);
     for (const path of d.engrave) add(polyline(path, x, y), layers.ENGRAVE);
     const w = d.width, h = d.height;
     add(polyline([[0, 0], [w, 0], [w, h], [0, h], [0, 0]], x, y), layers.BORDER);
     add(new rhino.TextDot(d.label, [x + 12, y + 10, 0]), layers.BORDER);
+    for (const [mx, my, text] of d.marks || []) {
+      add(new rhino.TextDot(text, [x + mx, y + my, 0]), layers.BORDER);
+    }
     x += w + GAP;
     rowHeight = Math.max(rowHeight, h);
   });
-  return file.toByteArray();
+  try {
+    return file.toByteArray();
+  } finally {
+    file.delete?.();  // free the WASM document after writing
+  }
 }
 
 // Desktop layout: keep the map on the left and put every other IGN control
@@ -1553,4 +1616,57 @@ function sheets2D3dm(rhino, drawings) {
   side.className = "ign-side";
   for (const child of [...panel.children]) if (child !== map) side.append(child);
   panel.append(side);
+  // Third column for the building list (shown once buildings are loaded).
+  const list = document.createElement("div");
+  list.className = "ign-list";
+  for (const id of ["building-note", "building-list"]) {
+    const el = $("#" + id);
+    if (el) list.append(el);
+  }
+  panel.append(list);
 })();
+
+// One navigation row per step, same place on every screen:
+// "‹ 이전 · …" (text) on the left, the main "다음 / 만들기 / 받기" pill on the right.
+(() => {
+  const NEXT = { 1: "#site-next", 2: "#run", 3: "#review-next", 4: "#export" };
+  for (const step of [1, 2, 3, 4]) {
+    const panel = $("#step-panel-" + step);
+    const next = $(NEXT[step]);
+    if (!panel || !next) continue;
+    const back = panel.querySelector(`button[data-go-step="${step - 1}"]`);
+    const nav = document.createElement("div");
+    nav.className = "step-nav";
+    if (back) { back.classList.add("back"); nav.append(back); }
+    next.classList.add("next");
+    next.classList.remove("full-width", "secondary-action");
+    nav.append(next);
+    panel.append(nav);
+    // drop the now-empty old action rows
+    for (const row of panel.querySelectorAll(".section-actions")) {
+      if (!row.querySelector("button")) row.remove();
+    }
+  }
+})();
+
+
+// Step 4: show the chosen colours/width as hex codes and in a small preview.
+(() => {
+  const sync = () => {
+    const cut = $("#cut-color").value, eng = $("#engrave-color").value;
+    const w = Math.max(0.5, Math.min(6, Number($("#line-width").value) * 10 || 1));
+    $("#cut-color-value").textContent = cut;
+    $("#engrave-color-value").textContent = eng;
+    $("#preview-cut").setAttribute("stroke", cut);
+    $("#preview-engrave").setAttribute("stroke", eng);
+    for (const id of ["#preview-cut", "#preview-engrave"]) $(id).setAttribute("stroke-width", w);
+  };
+  for (const id of ["#cut-color", "#engrave-color", "#line-width"]) $(id).addEventListener("input", sync);
+  sync();
+})();
+
+
+// Skip link: from the intro it opens step 1 instead of jumping to a hidden panel.
+document.querySelector(".skip-link")?.addEventListener("click", event => {
+  if (document.body.dataset.page === "0") { event.preventDefault(); showStep(1, true); }
+});

@@ -197,8 +197,13 @@ def _curves(items, factor):
         if len(points) < 2:
             raise ValueError(f"{ident}: 곡선에 점이 두 개 이상 필요합니다.")
         points = [p if len(p) == 3 else [*p, 0.0] for p in points]
-        if item.get("closed", False) and points[0] != points[-1]:
-            points.append(points[0][:])
+        if item.get("closed", False):
+            # flattened ellipses/splines end ~1e-16 off the start: snap shut
+            # instead of adding a tiny reversed segment that fails is_simple
+            if math.hypot(points[0][0] - points[-1][0], points[0][1] - points[-1][1]) <= EPS:
+                points[-1] = points[0][:]
+            else:
+                points.append(points[0][:])
         line = LineString([p[:2] for p in points])
         if line.is_empty or line.length <= EPS or not line.is_simple:
             raise ValueError(f"{ident}: 퇴화하거나 자기 교차하는 곡선입니다.")
@@ -278,7 +283,10 @@ def _choose(curves, selection):
     return boundary, contours, roads
 
 
-def _buildings(items, factor, base_at):
+def _buildings(items, factor, base_at, base_plate=None):
+    """Normalise buildings: repair slightly invalid IGN footprints, cut them
+    to the bottom plate first, THEN sample each piece's base elevation (so a
+    building straddling the site edge never samples outside the terrain)."""
     result = []
     for item in items:
         _mapping(item, "건물")
@@ -287,24 +295,37 @@ def _buildings(items, factor, base_at):
             [_point(p, factor, (2,)) for p in ring]
             for ring in item.get("holes", [])
         ]
-        polygon = valid_polygon(shell, holes)
+        try:
+            polygon = Polygon(shell, holes)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("건물 외곽선 좌표가 올바르지 않습니다.") from exc
+        if not polygon.is_valid:
+            polygon = shapely.make_valid(polygon)
+        if polygon.is_empty or polygon.area <= EPS * EPS:
+            continue
         height = number(item.get("h"), "건물 높이") * factor
         if not math.isfinite(height) or height <= 0:
             raise ValueError("건물 높이는 양수여야 합니다.")
-        if item.get("base") is None:
-            p = polygon.representative_point()
-            base = number(base_at(p.x, p.y), "건물 바닥 고도")
-        else:
-            base = number(item["base"], "건물 바닥 고도") * factor
-        if not math.isfinite(base):
-            raise ValueError("건물 바닥 고도가 유한하지 않습니다.")
-        result.append({
-            "polygon": [list(p) for p in polygon.exterior.coords],
-            "holes": [[list(p) for p in r.coords] for r in polygon.interiors],
-            "h": height,
-            **({"floors": int(item["floors"])} if item.get("floors") else {}),
-            "base": base,
-        })
+        area = polygon.area
+        if base_plate is not None:
+            polygon = shapely.intersection(polygon, base_plate, grid_size=GRID)
+        pieces = [g for g in getattr(polygon, "geoms", [polygon])
+                  if g.geom_type == "Polygon" and g.area > area * 0.01]
+        for piece in pieces:
+            if item.get("base") is None:
+                p = piece.representative_point()
+                base = number(base_at(p.x, p.y), "건물 바닥 고도")
+            else:
+                base = number(item["base"], "건물 바닥 고도") * factor
+            if not math.isfinite(base):
+                raise ValueError("건물 바닥 고도가 유한하지 않습니다.")
+            result.append({
+                "polygon": [list(p[:2]) for p in piece.exterior.coords],
+                "holes": [[list(p[:2]) for p in r.coords] for r in piece.interiors],
+                "h": height,
+                **({"floors": int(item["floors"])} if item.get("floors") else {}),
+                "base": base,
+            })
     return result
 
 
@@ -351,7 +372,8 @@ def _project(layer_geometries, buildings, settings, road_lines=()):
             raise ValueError("유효하지 않은 판재 형상입니다.")
         if previous is not None:
             excess = shapely.difference(geometry, previous, grid_size=GRID).area
-            if excess > max(1e-6, previous.area * 1e-8):
+            # tolerance = outline length x snap grid (hairline slivers only)
+            if excess > max(1e-6, geometry.length * GRID):
                 raise ValueError("상부 판재가 하부 판재 밖으로 벗어납니다.")
         engraving = []
         # Engrave where the next plate sits (its outline) so it can be glued
@@ -468,7 +490,8 @@ def from_geometry(geom_json, settings) -> Project:
                 raise ValueError("건물 기준점이 지형 범위 밖입니다.")
             return max(candidates)
 
-    buildings = _buildings(geom.get("buildings", []), factor, base_at)
+    buildings = _buildings(geom.get("buildings", []), factor, base_at,
+                           layers[0][1] if layers else None)
     return _project(layers, buildings, cfg, roads)
 
 
@@ -480,6 +503,7 @@ def from_terrain(dem, buildings, settings) -> Project:
         buildings or [],
         1.0,
         lambda x, y: sample_surface(triangles, x, y),
+        layers[0][1] if layers else None,
     )
     return _project(layers, normalized, cfg)
 

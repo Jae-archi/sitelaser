@@ -231,9 +231,10 @@ elif _sl_cmd == "from_terrain":
         _sl_a["dem"], _sl_a["buildings"], _sl_a["settings"]
     )
 elif _sl_cmd == "sheets":
-    if _sl_project is None:
-        raise RuntimeError("먼저 프로젝트를 생성하세요.")
-    _sl_next = _sl_api.sheets(_sl_project, _sl_a.get("style"))
+    _sl_proj = _sl_a.get("project") or _sl_project
+    if _sl_proj is None:
+        raise RuntimeError("먼저 모형을 만드세요.")
+    _sl_next = _sl_api.sheets(_sl_proj, _sl_a.get("style"))
 elif _sl_cmd == "sheet_drawings":
     _sl_next = _sl_api.sheet_drawings()
 
