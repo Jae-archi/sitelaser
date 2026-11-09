@@ -173,6 +173,9 @@ def _validated_path(path, closed):
 # Export line style, set per render_sheets() call (from the export screen).
 DEFAULT_STYLE = {"cut_color": "#ff0000", "engrave_color": "#0000ff", "line_width_mm": 0.1}
 _style = dict(DEFAULT_STYLE)
+# Line geometry of every sheet from the last render (mm), for the combined
+# Rhino file of all 2D drawings.
+_drawings = []
 
 
 def _validated_style(style):
@@ -265,6 +268,7 @@ def _dxf(cut, engrave, label):
 def render_sheets(project, style=None):
     global _style
     _style = _validated_style(style)
+    _drawings.clear()
     if not isinstance(project, Mapping):
         raise ValueError("project는 객체여야 합니다.")
     settings = validate_settings(project["settings"])
@@ -324,6 +328,8 @@ def render_sheets(project, style=None):
         )
         name = f"plate_{index + 1:02d}"
         output[name + ".svg"] = _svg(cut_mm, engrave_mm, layout, label)
+        _drawings.append({"name": name, "width": layout["width"], "height": layout["height"],
+                          "cut": cut_mm, "engrave": engrave_mm, "label": label})
         output[name + ".dxf"] = _dxf(cut_mm, engrave_mm, label)
         previous_geometry = geometry
         previous_z = z
@@ -372,6 +378,8 @@ def _building_sheets(buildings, layout, settings):
         )
         name = f"building_{k + 1:02d}"
         svg = _svg(cut, [], layout, label)
+        _drawings.append({"name": name, "width": layout["width"], "height": layout["height"],
+                          "cut": cut, "engrave": [], "label": label})
         marks = "".join(
             f'<text x="{x:.3f}" y="{layout["height"] - y:.3f}" font-size="1.6" '
             f'text-anchor="middle" font-family="sans-serif" fill="#285cd2">{txt}</text>'
@@ -383,3 +391,8 @@ def _building_sheets(buildings, layout, settings):
         )
         out[name + ".dxf"] = _dxf(cut, [], label)
     return out
+
+
+def sheet_drawings():
+    """Copy of the last render's sheet geometry (mm), in output order."""
+    return [dict(d, style=dict(_style)) for d in _drawings]

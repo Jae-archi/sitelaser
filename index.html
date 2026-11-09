@@ -14,7 +14,7 @@
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
   <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
-  <link rel="stylesheet" href="./style.css?v=20261108n">
+  <link rel="stylesheet" href="./style.css?v=20261109a">
 
   <script type="importmap">
   {
@@ -87,9 +87,9 @@
   <main id="top">
     <section class="intro" aria-labelledby="hero-title">
       <p class="eyebrow">ARCHI STUDIO</p>
-      <h1 id="hero-title">대지에서,<br>손에 잡히는 모형으로.</h1>
-      <p class="subhead">범위를 고르고, 모형을 확인하고, 제작 파일까지.</p>
-      <p class="note">입력 파일은 브라우저에서 처리합니다.</p>
+      <h1 id="hero-title">대지 모형,<br>지도에서 바로.</h1>
+      <p class="subhead">프랑스 어디든 범위를 고르면 레이저 커팅 도면과 3D 프린트 파일을 만듭니다.</p>
+      <p class="note">설치 없이 브라우저에서. 파일은 밖으로 나가지 않습니다.</p>
       <button id="start" type="button" class="primary start-button">시작하기 <span aria-hidden="true">›</span></button>
     </section>
 
@@ -102,8 +102,8 @@
                aria-labelledby="step-title-1">
         <div class="section-intro">
           <p class="eyebrow">01 · 대지</p>
-          <h3 id="step-title-1" tabindex="-1">대지를 고르세요</h3>
-          <p class="subhead">지도에서 범위를 정하거나 도면을 불러오세요.</p>
+          <h3 id="step-title-1" tabindex="-1">어디를 만들까요?</h3>
+          <p class="subhead">주소나 장소를 검색해 범위를 정하세요. DXF·3DM 파일도 됩니다.</p>
         </div>
 
         <div class="tabs source-tabs" role="tablist" aria-label="입력 방식">
@@ -130,12 +130,12 @@
 
           <div class="grid two">
             <div>
-              <label for="radius">범위 반경 (m)</label>
+              <label for="radius">범위 크기 · 반경 (m)</label>
               <input id="radius" type="number" min="20" max="2500"
                      step="1" value="200" aria-describedby="range-note">
             </div>
             <div>
-              <label for="grid-step">표고 샘플 간격 (m)</label>
+              <label for="grid-step">지형 정밀도 (m)</label>
               <input id="grid-step" type="number" min="1" max="100"
                      step="1" value="10">
             </div>
@@ -174,21 +174,21 @@
           <div id="map" aria-label="IGN 지도"
                aria-describedby="map-note range-note"></div>
           <p id="map-note" class="note" aria-live="polite">
-            지도 중심을 찍거나 범위를 그리세요.
+            지도를 눌러 중심을 정하거나, 범위를 직접 그리세요.
           </p>
           <p id="range-note" class="note"></p>
 
           <div class="toolbar building-tools">
-            <button id="load-buildings" type="button">범위 내 건물 조회</button>
+            <button id="load-buildings" type="button">건물 불러오기</button>
             <button id="select-all" type="button" class="text-action">
-              건물 모두 선택 <span aria-hidden="true">›</span>
+              모두 선택 <span aria-hidden="true">›</span>
             </button>
             <button id="select-none" type="button" class="text-action">
-              건물 선택 해제 <span aria-hidden="true">›</span>
+              모두 해제 <span aria-hidden="true">›</span>
             </button>
           </div>
           <p id="building-note" class="note" aria-live="polite">
-            건물을 조회한 뒤 포함할 건물을 선택하세요.
+            건물을 불러온 뒤 모형에 넣을 건물을 고르세요.
           </p>
           <div id="building-list" class="building-list"
                role="group" aria-label="포함할 건물"
@@ -201,10 +201,7 @@
           <input id="file" type="file" accept=".dxf,.3dm"
                  aria-describedby="file-help file-note">
           <p id="file-help" class="note">
-            최대 100 MB. DXF는 파일에 지정된 단위를 해석하며,
-            3DM은 파일의 단위를 m로 변환합니다.
-            3DM 입력은 폴리라인·직선·메시를 지원하며,
-            다른 객체가 있으면 누락시키지 않고 중단합니다.
+            최대 100 MB. 대지 외곽선은 BOUNDARY 레이어, 등고선은 CONTOUR 레이어에 그려 주세요.
           </p>
           <p id="file-note" class="note" aria-live="polite"></p>
         </section>
@@ -221,12 +218,12 @@
                aria-labelledby="step-title-2">
         <div class="section-intro">
           <p class="eyebrow">02 · 설정</p>
-          <h3 id="step-title-2" tabindex="-1">만들 방식을 정하세요</h3>
-          <p class="subhead">축척과 두께를 정하면 모형의 크기가 보입니다.</p>
+          <h3 id="step-title-2" tabindex="-1">어떻게 만들까요?</h3>
+          <p class="subhead">축척, 판 두께, 건물 제작 방식을 고르세요.</p>
         </div>
 
         <p id="settings-help" class="note section-help">
-          대지 선택을 마치고 ‘다음 · 설정’을 누르면 설정할 수 있습니다.
+          먼저 대지를 골라 주세요.
         </p>
 
         <fieldset id="settings-controls" disabled
@@ -248,7 +245,7 @@
             </div>
             <div>
               <label for="building-mode">건물 제작 방식</label>
-              <select id="building-mode" aria-describedby="building-mode-note">
+              <select id="building-mode" >
                 <option value="print">3D 프린터 · 통째로</option>
                 <option value="print_floor">3D 프린터 · 층별로 나눠서</option>
                 <option value="laser">레이저 커팅 · 판 두께 지정</option>
@@ -259,24 +256,23 @@
               <label for="floor-height">층고 (m)</label>
               <input id="floor-height" type="number" min="1" max="20"
                      step="0.1" value="3" required disabled
-                     aria-describedby="building-mode-note">
+                     >
             </div>
             <div id="building-thickness-field" hidden>
               <label for="building-thickness">건물 판 두께 (mm)</label>
               <input id="building-thickness" type="number" min="0.1" max="100"
                      step="0.1" value="1" required disabled
-                     aria-describedby="building-mode-note">
+                     >
             </div>
-            <p id="building-mode-note" class="field-note">통째로: buildings.stl 하나 · 층별로: 층마다 STL(buildings_floor_XX) · 판 두께 지정: 건물 판 두께로 나눈 도면 · 한 층 = 한 판: 층고를 축척에 맞춘 같은 두께의 판으로 층마다 도면(building_XX). 층고가 높은 건물(예: 1층 12 m)은 여러 장을 쌓습니다. 층별 3D 프린트는 IGN 실제 층수로 나눕니다.</p>
             <div>
-              <label for="interval">지형 높이 간격 (m)</label>
+              <label for="interval">등고 간격 (m)</label>
               <input id="interval" type="number" min="0.1" max="1000"
                      step="0.1" value="2" required
                      aria-describedby="stack-note">
             </div>
             <label class="check-row" for="link-scale">
               <input id="link-scale" type="checkbox" checked>
-              <span>판 두께와 높이 간격을 실제 비율로 연동 (간격 = 두께 × 축척 ÷ 1000)</span>
+              <span>높이를 실제 비율로 맞추기 (판 두께에 맞춰 등고 간격 자동 계산)</span>
             </label>
             <div>
               <label for="paper">용지</label>
@@ -310,7 +306,7 @@
 
           <p id="model-summary" class="model-summary"
              aria-live="polite" aria-atomic="true">
-            범위와 축척을 정하면 완성 크기가 표시됩니다.
+            범위와 축척을 정하면 완성 크기가 보입니다.
           </p>
           <p id="sheet-fit" class="note" aria-live="polite"></p>
           <p id="stack-note" class="note"></p>
@@ -318,7 +314,7 @@
 
           <div class="section-actions">
             <button id="run" type="button" class="primary"
-                    aria-describedby="generation-error">지형판 생성</button>
+                    aria-describedby="generation-error">모형 만들기</button>
           </div>
         </fieldset>
 
@@ -335,8 +331,8 @@
              aria-labelledby="step-title-3">
       <div class="section-intro">
         <p class="eyebrow">03 · 확인</p>
-        <h3 id="step-title-3" tabindex="-1">모형을 확인하세요</h3>
-        <p class="subhead">입체로 살펴보고, 한 장씩 확인하세요.</p>
+        <h3 id="step-title-3" tabindex="-1">이렇게 만들어집니다</h3>
+        <p class="subhead">돌려 보고, 판마다 도면을 확인하세요.</p>
       </div>
 
       <section class="viewer-card" aria-labelledby="viewer-title">
@@ -370,11 +366,11 @@
                   <input id="show-buildings" type="checkbox" checked> 건물
                 </label>
                 <label class="check">
-                  <input id="show-edges" type="checkbox" checked> 모서리
+                  <input id="show-edges" type="checkbox" checked> 윤곽선
                 </label>
               </div>
 
-              <label for="layer-slider">보이는 지형판 수</label>
+              <label for="layer-slider">쌓인 판 보기</label>
               <div class="inline">
                 <input id="layer-slider" type="range"
                        min="0" max="0" value="0" disabled>
@@ -386,7 +382,7 @@
                  aria-describedby="viewer-help"></div>
             <p id="viewer-help" class="note viewer-help">
               드래그: 회전 · 휠: 확대 · 오른쪽 드래그: 이동.<br>
-              표시 옵션은 ZIP의 전체 모델에 영향을 주지 않습니다.
+              여기서 숨겨도 받는 파일에는 모두 들어갑니다.
             </p>
           </section>
 
@@ -397,14 +393,14 @@
               <div class="section-heading">
                 <h3 id="plate-title">2D 지형판</h3>
               </div>
-              <label for="plate-select">레이어</label>
+              <label for="plate-select">도면 선택</label>
               <select id="plate-select" disabled></select>
             </div>
 
             <div class="plate-stage">
               <img id="plate-preview"
                    alt="선택한 지형판 SVG 미리보기" hidden>
-              <p id="plate-empty">지형판을 생성하면 여기에 표시됩니다.</p>
+              <p id="plate-empty">모형을 만들면 여기에 보입니다.</p>
             </div>
           </section>
         </div>
@@ -412,7 +408,7 @@
 
       <fieldset id="review-controls" disabled>
         <legend class="sr-only">모형 검토와 다음 단계</legend>
-        <p class="note section-help">지형판 수와 건물을 확인한 뒤 진행하세요.</p>
+        <p class="note section-help">괜찮으면 다음으로 넘어가세요.</p>
         <div class="section-actions">
           <button id="inspect-viewer" type="button"
                   class="full-width text-action">
@@ -420,7 +416,7 @@
           </button>
           <button id="review-next" type="button"
                   class="primary full-width secondary-action">
-            확인 완료 · 내보내기
+            다음 · 파일 받기
           </button>
         </div>
       </fieldset>
@@ -436,40 +432,39 @@
     <section id="step-panel-4" class="step-panel content-section export-section"
              aria-labelledby="step-title-4">
       <div class="section-intro">
-        <p class="eyebrow">04 · 제작</p>
-        <h3 id="step-title-4" tabindex="-1">내보내기</h3>
-        <p class="subhead">도면과 전체 모형을 하나의 ZIP으로.</p>
+        <p class="eyebrow">04 · 파일</p>
+        <h3 id="step-title-4" tabindex="-1">파일 받기</h3>
+        <p class="subhead">선 색과 굵기를 정하고 ZIP 하나로 받으세요.</p>
       </div>
 
       <ul class="export-contents">
-        <li>지형판 SVG·DXF</li>
-        <li>건물 STL · 적층 모형 3DM</li>
-        <li>프로젝트 JSON · 좌표·단위 설명</li>
+        <li>레이저 도면 (SVG·DXF)</li>
+        <li>3D 프린트 (STL) · Rhino 모형 (3DM)</li>
+        <li>모든 도면을 모은 Rhino 파일 (sheets_2d.3dm)</li>
+        <li>좌표·단위 정보</li>
       </ul>
       <p class="note">
-        건물이 없는 경우 STL은 포함되지 않습니다.<br>
-        제작 전 절단선·단위·공차를 확인하세요.
+        자르기 전에 단위와 재료 두께를 한 번 더 확인하세요.
       </p>
       <fieldset class="line-style">
-        <legend>레이저 선 설정</legend>
+        <legend>레이저 선</legend>
         <div class="line-style-grid">
           <label for="cut-color">자르는 선 색
             <input id="cut-color" type="color" value="#ff0000">
           </label>
-          <label for="engrave-color">각인선 색
+          <label for="engrave-color">새기는 선 색
             <input id="engrave-color" type="color" value="#0000ff">
           </label>
           <label for="line-width">선 굵기 (mm)
             <input id="line-width" type="number" min="0.001" max="2" step="0.01" value="0.1">
           </label>
         </div>
-        <p class="note">레이저 프로그램은 보통 색으로 자르기·각인을 구분합니다. SVG와 DXF 모두에 적용됩니다.</p>
       </fieldset>
       <p id="export-error" class="note error" aria-live="polite" hidden></p>
 
       <div class="section-actions">
         <button id="export" type="button" class="primary full-width"
-                aria-describedby="export-error" disabled>내보내기 ZIP</button>
+                aria-describedby="export-error" disabled>ZIP 받기</button>
         <button type="button" class="full-width secondary-action"
                 data-go-step="3">
           이전 · 확인 <span aria-hidden="true">›</span>
@@ -486,7 +481,7 @@
       </div>
       <div class="inline">
         <p id="status" role="status" aria-live="polite" aria-atomic="true">
-          화면을 준비하고 있습니다.
+          주소나 장소를 검색해 시작하세요.
         </p>
         <button id="cancel" type="button" disabled>취소</button>
       </div>
@@ -505,11 +500,11 @@
   <noscript>SiteLaser를 사용하려면 JavaScript를 활성화하세요.</noscript>
 
   <script type="module">
-    import("./app.js?v=20261108n").catch(error => {
+    import("./app.js?v=20261109a").catch(error => {
       const status = document.querySelector("#status");
       status.textContent = "화면을 시작하지 못했습니다: " + error.message;
       status.dataset.error = "true";
-      document.querySelector("#engine-state").textContent = "엔진 상태 확인 불가";
+      
     });
   </script>
 </body>

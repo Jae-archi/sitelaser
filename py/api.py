@@ -104,7 +104,7 @@ if __package__:
         surface_layers,
         valid_polygon,
     )
-    from .sheets import render_sheets, validate_settings
+    from .sheets import render_sheets, sheet_drawings as _sheet_drawings, validate_settings
 else:
     # worker.js may place these three modules directly on sys.path.
     from slicing import (
@@ -119,7 +119,7 @@ else:
         surface_layers,
         valid_polygon,
     )
-    from sheets import render_sheets, validate_settings
+    from sheets import render_sheets, sheet_drawings as _sheet_drawings, validate_settings
 
 
 Project = dict
@@ -354,9 +354,15 @@ def _project(layer_geometries, buildings, settings, road_lines=()):
             if excess > max(1e-6, previous.area * 1e-8):
                 raise ValueError("상부 판재가 하부 판재 밖으로 벗어납니다.")
         engraving = []
-        if marking is not None:
+        # Engrave where the next plate sits (its outline) so it can be glued
+        # in place, plus building footprints.
+        marks_here = [] if marking is None else [marking]
+        if index + 1 < len(layer_geometries):
+            marks_here.append(layer_geometries[index + 1][1].boundary)
+        if marks_here:
+            local = shapely.unary_union(marks_here, grid_size=GRID)
             clipped = shapely.difference(
-                shapely.intersection(marking, geometry, grid_size=GRID),
+                shapely.intersection(local, geometry, grid_size=GRID),
                 geometry.boundary, grid_size=GRID)
             engraving = paths(clipped)
         layers.append({
@@ -480,3 +486,8 @@ def from_terrain(dem, buildings, settings) -> Project:
 
 def sheets(project, style=None):
     return render_sheets(project, style)
+
+
+def sheet_drawings():
+    """Line geometry (mm) of the sheets from the last sheets() call."""
+    return _sheet_drawings()

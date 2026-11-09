@@ -177,7 +177,7 @@ _sl_project = None
   await pyodide.runPythonAsync(`
 importlib.invalidate_caches()
 _sl_api = importlib.import_module("sitecode.api")
-for _sl_name in ("from_dxf", "from_geometry", "from_terrain", "sheets"):
+for _sl_name in ("from_dxf", "from_geometry", "from_terrain", "sheets", "sheet_drawings"):
     if not callable(getattr(_sl_api, _sl_name, None)):
         raise RuntimeError("py/api.py에 함수가 없습니다: " + _sl_name)
 `);
@@ -199,7 +199,7 @@ async function execute(cmd, args) {
   const py = await engine();
   if (cmd === "init") return { ready: true };
 
-  if (!["from_dxf", "from_geometry", "from_terrain", "sheets"].includes(cmd)) {
+  if (!["from_dxf", "from_geometry", "from_terrain", "sheets", "sheet_drawings"].includes(cmd)) {
     throw new Error(`지원하지 않는 작업: ${cmd}`);
   }
 
@@ -234,6 +234,8 @@ elif _sl_cmd == "sheets":
     if _sl_project is None:
         raise RuntimeError("먼저 프로젝트를 생성하세요.")
     _sl_next = _sl_api.sheets(_sl_project, _sl_a.get("style"))
+elif _sl_cmd == "sheet_drawings":
+    _sl_next = _sl_api.sheet_drawings()
 
 _sl_serialized = json.dumps(
     _sl_next,
@@ -241,7 +243,7 @@ _sl_serialized = json.dumps(
     ensure_ascii=False,
     allow_nan=False
 )
-if _sl_cmd != "sheets":
+if _sl_cmd not in ("sheets", "sheet_drawings"):
     _sl_project = _sl_next
 _sl_serialized
 `);
