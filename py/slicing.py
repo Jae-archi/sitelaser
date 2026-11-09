@@ -93,6 +93,43 @@ def paths(geometry):
     ]
 
 
+def stack_seat(source_base, elevations):
+    """Index of the highest plate at or below source_base."""
+    seat = 0
+    for i, z in enumerate(elevations):
+        if z <= source_base + 1e-8:
+            seat = i
+        else:
+            break
+    return seat
+
+
+def building_support_plan(footprint, plates, seat=None):
+    """Fill unoccupied slabs up to the building's seating height."""
+    if seat is None:
+        seat, limit = 0, len(plates)
+        # Plate coverage is nested, so contact at a high layer implies
+        # contact on each layer beneath it.
+        while limit - seat > 1:
+            middle = (seat + limit) // 2
+            if shapely.intersection(footprint, plates[middle], grid_size=1e-4).area > 0:
+                seat = middle
+            else:
+                limit = middle
+
+    supports = []
+    tolerance = max(EPS, footprint.length * 1e-4)
+    for index in range(1, seat + 1):
+        if plates[index].covers(footprint):
+            continue
+        gap = shapely.difference(footprint, plates[index], grid_size=1e-4)
+        cut = [ring for piece in polygons(gap) if piece.area > tolerance for ring in rings(piece)]
+        if cut:
+            supports.append({"layer": index, "cut": cut})
+    return seat, supports
+
+
+
 def valid_polygon(shell, holes=()):
     try:
         polygon = Polygon(shell, holes)

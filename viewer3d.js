@@ -334,38 +334,57 @@ export class Viewer3D {
     const scale = 1000 / this.project.settings.scale;
     file.settings().modelUnitSystem = rhino.UnitSystem.Millimeters;
 
+    const profile = path => {
+      const points = path.getPoints().map(({ x, y }) => [x * scale, y * scale, 0]);
+      const polyline = new rhino.Polyline(points.length);
+      try {
+        for (const point of points) polyline.add(...point);
+        return polyline.toPolylineCurve();
+      } finally {
+        polyline.delete();
+      }
+    };
+
     try {
       for (const source of [...this.plates, ...this.buildings]) {
-        const geometry = source.geometry;
-        const positions = geometry.getAttribute("position");
-        const indices = geometry.index;
-        const mesh = new rhino.Mesh();
+        const { shapes, options } = source.geometry.parameters;
+        const extrusion = new rhino.Extrusion();
         const attributes = new rhino.ObjectAttributes();
 
         try {
           attributes.name = source.name;
-          const vertices = mesh.vertices();
-          for (let i = 0; i < positions.count; i++) {
-            vertices.add(
-              positions.getX(i) * scale,
-              positions.getY(i) * scale,
-              (positions.getZ(i) + source.position.z) * scale
-            );
+          extrusion.setPathAndUp([0, 0, 0], [0, 0, options.depth * scale], [0, 1, 0]);
+          const outer = profile(shapes);
+          try {
+            if (!extrusion.setOuterProfile(outer, true)) {
+              throw new Error(`Rhino 외곽선 생성 실패: ${source.name}`);
+            }
+          } finally {
+            outer.delete();
           }
-          const faces = mesh.faces();
-          const count = indices ? indices.count : positions.count;
-          for (let i = 0; i < count; i += 3) {
-            const a = indices ? indices.getX(i) : i;
-            const b = indices ? indices.getX(i + 1) : i + 1;
-            const c = indices ? indices.getX(i + 2) : i + 2;
-            faces.addTriFace(a, b, c);
+          for (const hole of shapes.holes) {
+            const inner = profile(hole);
+            try {
+              if (!extrusion.addInnerProfile(inner)) {
+                throw new Error(`Rhino 내부 구멍 생성 실패: ${source.name}`);
+              }
+            } finally {
+              inner.delete();
+            }
           }
-          mesh.normals().computeNormals();
-          mesh.compact();
-          file.objects().add(mesh, attributes);
+          const brep = extrusion.toBrep(true);
+          try {
+            if (!brep?.isValid || !brep.isSolid) {
+              throw new Error(`닫힌 Rhino 폴리서피스 생성 실패: ${source.name}`);
+            }
+            if (source.position.z !== 0) brep.translate([0, 0, source.position.z * scale]);
+            file.objects().add(brep, attributes);
+          } finally {
+            brep?.delete();
+          }
         } finally {
           attributes.delete();
-          mesh.delete();
+          extrusion.delete();
         }
       }
       return file.toByteArray();
@@ -386,7 +405,7 @@ export class Viewer3D {
       building_base_rule: "top of last source-z plate at or below building.base",
       building_height_rule: "source h * 1000 / scale",
       stl: "buildings only; Z up; same assembly coordinates as model.3dm",
-      model_3dm: "all plates and buildings; Z up; assembly coordinates"
+      model_3dm: "closed Brep solids for all plates and buildings; Z up; assembly coordinates"
     };
   }
 

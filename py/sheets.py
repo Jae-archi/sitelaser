@@ -14,12 +14,15 @@ from collections.abc import Mapping
 
 import ezdxf
 import shapely
-from shapely.geometry import LineString, Polygon
+from ezdxf.enums import TextEntityAlignment
+from shapely.affinity import scale
+from shapely.geometry import LineString, Polygon, box
+from shapely.ops import polylabel
 
 if __package__:
-    from .slicing import EPS, even_odd, integer, number
+    from .slicing import EPS, building_support_plan, even_odd, integer, number, paths, polygons, rings, stack_seat
 else:
-    from slicing import EPS, even_odd, integer, number
+    from slicing import EPS, building_support_plan, even_odd, integer, number, paths, polygons, rings, stack_seat
 
 
 SIZES_MM = {
@@ -31,10 +34,15 @@ SIZES_MM = {
 }
 MARGIN_MM = 12
 FOOTER_MM = 24
+SITE_FOOTER_MM = 12
+PAPER_MIN_MM = 50
+PAPER_MAX_MM = 5000
+NUMBER_HEIGHT_MM = 1.6
+CAP_HEIGHT_RATIO = 0.718  # Arial/Helvetica cap height relative to the font em
 SETTING_KEYS = {
     "scale", "thickness_mm", "interval_m", "paper", "orientation",
     "building_mode", "building_thickness_mm", "floor_height_m",
-    "paper_width_mm", "paper_height_mm",
+    "paper_width_mm", "paper_height_mm", "paper_footer",
 }
 
 
@@ -58,16 +66,19 @@ def validate_settings(settings):
         raise ValueError("등고 간격은 양수여야 합니다.")
     paper = settings.get("paper", "A3")
     orientation = settings.get("orientation", "landscape")
+    paper_footer = settings.get("paper_footer", False)
+    if not isinstance(paper_footer, bool):
+        raise ValueError("하단 도면 정보 추가는 켜기 또는 끄기로 설정해야 합니다.")
     custom = None
     if paper == "custom":
         # user-defined sheet, e.g. a laser bed of 600 x 400 mm
         cw = number(settings.get("paper_width_mm", 600), "용지 가로")
         ch = number(settings.get("paper_height_mm", 400), "용지 세로")
-        if not (50 <= cw <= 5000 and 50 <= ch <= 5000):
+        if not (PAPER_MIN_MM <= cw <= PAPER_MAX_MM and PAPER_MIN_MM <= ch <= PAPER_MAX_MM):
             raise ValueError("사용자 용지는 가로·세로 50~5000 mm 범위여야 합니다.")
         custom = (cw, ch)
-    elif paper not in SIZES_MM:
-        raise ValueError("용지는 A0~A4 또는 사용자 설정이어야 합니다.")
+    elif paper != "site" and paper not in SIZES_MM:
+        raise ValueError("용지는 A0~A4, 대지 범위에 맞춤, 사용자 설정 중 하나여야 합니다.")
     if orientation not in {"landscape", "portrait"}:
         raise ValueError("방향은 landscape 또는 portrait여야 합니다.")
     # Buildings: "print" (STL for a 3D printer) or "laser" (stacked sheets
@@ -95,6 +106,7 @@ def validate_settings(settings):
         "interval_m": interval,
         "paper": paper,
         "orientation": orientation,
+        "paper_footer": paper_footer,
     }
 
 
@@ -104,7 +116,21 @@ def _layout(bounds, settings):
     xmin, ymin, xmax, ymax = [number(v, "범위") for v in bounds]
     if xmax <= xmin or ymax <= ymin:
         raise ValueError("도면 범위의 폭과 높이는 양수여야 합니다.")
-    if settings["paper"] == "custom":
+    factor = 1000 / settings["scale"]
+    draw_width = (xmax - xmin) * factor
+    draw_height = (ymax - ymin) * factor
+    if not math.isfinite(draw_width + draw_height):
+        raise ValueError("출력 크기가 유한하지 않습니다.")
+    fitted = settings["paper"] == "site"
+    caption = settings["paper_footer"] and (not fitted or draw_width >= PAPER_MIN_MM)
+    extra = SITE_FOOTER_MM if fitted and caption else 0
+    horizontal = 0 if fitted else 2 * MARGIN_MM
+    vertical = extra if fitted else 2 * MARGIN_MM + FOOTER_MM
+    if fitted:
+        width, height = draw_width, draw_height + extra
+        if max(width, height) > PAPER_MAX_MM:
+            raise ValueError("용지 한도 5,000 mm를 넘습니다. 축척 분모를 키우거나 대지 범위를 줄이세요.")
+    elif settings["paper"] == "custom":
         # custom sizes are taken as typed: width x height, no rotation
         width, height = settings["paper_width_mm"], settings["paper_height_mm"]
     else:
@@ -114,13 +140,8 @@ def _layout(bounds, settings):
             if settings["orientation"] == "landscape"
             else (short, long)
         )
-    usable_width = width - 2 * MARGIN_MM
-    usable_height = height - 2 * MARGIN_MM - FOOTER_MM
-    factor = 1000 / settings["scale"]
-    draw_width = (xmax - xmin) * factor
-    draw_height = (ymax - ymin) * factor
-    if not math.isfinite(draw_width + draw_height):
-        raise ValueError("출력 크기가 유한하지 않습니다.")
+    usable_width = width - horizontal
+    usable_height = height - vertical
     if (
         draw_width > usable_width + 1e-8
         or draw_height > usable_height + 1e-8
@@ -136,11 +157,13 @@ def _layout(bounds, settings):
     return {
         "width": width,
         "height": height,
+        "fitted": fitted,
+        "caption": caption,
         "factor": factor,
         "xmin": xmin,
         "ymin": ymin,
         "left": (width - draw_width) / 2,
-        "bottom": MARGIN_MM + FOOTER_MM + (usable_height - draw_height) / 2,
+        "bottom": extra if fitted else MARGIN_MM + FOOTER_MM + (usable_height - draw_height) / 2,
     }
 
 
@@ -202,7 +225,7 @@ def _lineweight(mm):
     return min(allowed, key=lambda v: abs(v - mm * 100))
 
 
-def _svg(cut, engrave, layout, label):
+def _svg(cut, engrave, layout, label, texts):
     width, height = layout["width"], layout["height"]
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" '
@@ -224,19 +247,31 @@ def _svg(cut, engrave, layout, label):
                 f"{x:.9f},{height - y:.9f}" for x, y in path
             )
             parts.append(f'<polyline points="{points}"/>')
+        if name == "ENGRAVE":
+            for x, y, text, size, align, layer in texts:
+                if layer == name:
+                    parts.append(_svg_text(x, height - y, text, size, align, color))
         parts.append("</g>")
     parts.extend([
         '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">',
-        f'<text x="{MARGIN_MM}" y="{height - 10}" '
-        'font-size="3.5" font-family="sans-serif" fill="#25333b">'
-        f"{html.escape(label)}</text>",
+        *(_svg_text(x, height - y, text, size, align, "#25333b")
+          for x, y, text, size, align, layer in texts if layer == "LABELS_NO_CUT"),
         "</g>",
         "</svg>",
     ])
     return "\n".join(parts)
 
 
-def _dxf(cut, engrave, label, marks=()):
+def _svg_text(x, y, text, size, align, color):
+    anchor = {"left": "start", "center": "middle", "right": "end"}[align]
+    return (
+        f'<text x="{x:.9f}" y="{y:.9f}" font-size="{size / CAP_HEIGHT_RATIO:.6f}" '
+        f'text-anchor="{anchor}" font-family="Arial, sans-serif" '
+        f'fill="{color}" stroke="none">{html.escape(text)}</text>'
+    )
+
+
+def _dxf(cut, engrave, texts):
     doc = ezdxf.new("R2010")
     doc.units = 4
     doc.header["$MEASUREMENT"] = 1
@@ -246,6 +281,7 @@ def _dxf(cut, engrave, label, marks=()):
         layer = doc.layers.new(name, dxfattribs={"lineweight": lw})
         layer.rgb = _rgb(_style[key])  # true colour, as the laser software expects
     doc.layers.new("LABELS_NO_CUT", dxfattribs={"color": 7})
+    doc.styles.new("SiteLaser", dxfattribs={"font": "Arial.ttf"})
     model = doc.modelspace()
     for name, paths in (("CUT", cut), ("ENGRAVE", engrave)):
         for points in paths:
@@ -255,18 +291,107 @@ def _dxf(cut, engrave, label, marks=()):
                 close=closed,
                 dxfattribs={"layer": name},
             )
-    model.add_text(label, dxfattribs={
-        "layer": "LABELS_NO_CUT",
-        "height": 3.5,
-        "insert": (MARGIN_MM, 10),
-    })
-    for (mx, my), text in marks:  # building numbers, not cut
-        model.add_text(text, dxfattribs={
-            "layer": "LABELS_NO_CUT", "height": 1.6, "insert": (mx, my),
-        })
+    for x, y, text, size, align, layer in texts:
+        anchor = TextEntityAlignment[align.upper()]
+        model.add_text(text, dxfattribs={"layer": layer, "height": size, "style": "SiteLaser"}).set_placement(
+            (x, y), align=anchor
+        )
     stream = io.StringIO()
     doc.write(stream)
     return stream.getvalue()
+
+
+def _save_sheet(output, name, thickness, cut, engrave, layout, label, numbers, checks=()):
+    texts = list(numbers)
+    if layout["caption"]:
+        inset, baseline = (4, 4) if layout["fitted"] else (MARGIN_MM, 10)
+        size = min(3.5, (layout["width"] - 2 * inset) / len(label))
+        texts.insert(0, (layout["width"] - inset, baseline, label, size, "right", "LABELS_NO_CUT"))
+    output[name + ".svg"] = _svg(cut, engrave, layout, label, texts)
+    output[name + ".dxf"] = _dxf(cut, engrave, texts)
+    _drawings.append({
+        "name": name, "thickness_mm": thickness, "width": layout["width"],
+        "height": layout["height"], "cut": cut, "engrave": engrave,
+        "texts": texts, "cap_height_ratio": CAP_HEIGHT_RATIO, "placement_checks": list(checks),
+    })
+
+
+def _number_mark(polygon, text, layout, *, fit=False):
+    """Keep the entire engraving inside the part, including around courtyards."""
+    height = NUMBER_HEIGHT_MM / layout["factor"]
+    center = polygon.representative_point()
+
+    def fits(point, size):
+        half_width = size * len(text) / 2
+        half_height = size * .75
+        return polygon.covers(box(point.x - half_width, point.y - half_height,
+                                  point.x + half_width, point.y + half_height))
+
+    if not fits(center, height):
+        if not fit:
+            return None
+        # Find space in the proportions of the label, including in long,
+        # thin footprints and in wings that surround a courtyard.
+        origin = (polygon.bounds[0], polygon.bounds[1])
+        normalized = scale(polygon, 1 / len(text), 1 / 1.5, origin=origin)
+        pole = polylabel(normalized, tolerance=max(height / 32, 1e-4))
+        center = scale(pole, len(text), 1.5, origin=origin)
+        low, high = 0, height
+        for _ in range(16):
+            middle = (low + high) / 2
+            if fits(center, middle):
+                low = middle
+            else:
+                high = middle
+        height = low
+    size_mm = math.floor(height * layout["factor"] * 1000 + EPS) / 1000
+    if size_mm <= 0:
+        return None
+    height = size_mm / layout["factor"]
+    y = center.y - height / 2
+    x_mm, y_mm = _mm([(center.x, y)], layout)[0]
+    return (x_mm, y_mm, text, size_mm, "center", "ENGRAVE")
+
+
+def _terrain_numbers(footprints, surfaces, layout):
+    numbers = [[] for _ in surfaces]
+    checks = [[] for _ in surfaces]
+    surface_edges = [surface.boundary for surface in surfaces]
+    for number, footprint in enumerate(footprints, 1):
+        for index, surface in enumerate(surfaces):
+            clipped = shapely.intersection(footprint, surface, grid_size=1e-4)
+            # Exclude fragments with no building edge inside the visible
+            # surface. A terrain cut or step alone isn't a building outline.
+            visible = [
+                part for part in shapely.get_parts(clipped)
+                if part.geom_type == "Polygon" and not part.is_empty
+                and shapely.difference(part.boundary, surface_edges[index], grid_size=1e-4).length > EPS
+            ]
+            if not visible:
+                continue
+            marks = [_number_mark(part, f"B{number}", layout, fit=True) for part in visible]
+            mark = max((mark for mark in marks if mark), key=lambda item: item[3], default=None)
+            if mark is None:
+                checks[index].append(f"B{number}: 각인 윤곽이 너무 작아 번호를 넣을 수 없음")
+                continue
+            numbers[index].append(mark)
+            if mark[3] < .6:
+                checks[index].append(f"B{number}: 작은 번호 ({mark[3]:g} mm), 가공 크기 확인")
+    return numbers, checks
+
+
+def _exposed_engraving(paths, surface):
+    """Clip marks to the exposed face, including the next plate's outline."""
+    shapely.prepare(surface)
+    for path in paths:
+        line = LineString(path)
+        if surface.covers(line):
+            yield path
+            continue
+        clipped = shapely.intersection(line, surface, grid_size=1e-4)
+        for piece in shapely.get_parts(clipped):
+            if piece.geom_type == "LineString" and piece.length > EPS:
+                yield list(piece.coords)
 
 
 def render_sheets(project, style=None):
@@ -282,6 +407,7 @@ def render_sheets(project, style=None):
         raise ValueError("출력할 판재가 없습니다.")
     bounds = tuple(number(v, "범위") for v in project["bounds"])
     output = {}
+    terrain = []
     previous_geometry = None
     previous_z = None
     for position, layer in enumerate(layers):
@@ -306,48 +432,79 @@ def render_sheets(project, style=None):
             extra = shapely.difference(geometry, previous_geometry, grid_size=1e-4)
             if extra.area > max(1e-6, geometry.length * 1e-4):  # snap slivers only
                 raise ValueError("누적 판재의 포함 관계가 잘못되었습니다.")
-        # Real IGN footprints and contours often run past a plate edge:
-        # clip engrave lines to the plate instead of rejecting the project.
-        clipped = []
-        # Once per plate. 1e-4 m, not EPS (1e-8): a 1e-8 buffer at Lambert-93
-        # magnitudes (~7e6 m) is below float precision and makes GEOS throw.
-        plate_zone = geometry.buffer(1e-4)
-        for path in engrave:
-            line = LineString(path)
-            if plate_zone.covers(line):
-                clipped.append(path)
-                continue
-            part = shapely.intersection(line, geometry, grid_size=1e-4)
-            for piece in getattr(part, "geoms", [part]):
-                if piece.geom_type == "LineString" and piece.length > EPS:
-                    clipped.append([list(c[:2]) for c in piece.coords])
-        engrave = clipped
-
         cut_mm = [_mm(path, layout) for path in cut]
-        engrave_mm = [_mm(path, layout) for path in engrave]
         label = (
-            f"L{index:02d} | z={z:g} m | "
+            f"L{index + 1:02d} | z={z:g} m | "
             f"1:{settings['scale']:g} | "
             f"t={settings['thickness_mm']:g} mm | print 100%"
         )
-        name = f"plate_{index + 1:02d}"
-        output[name + ".svg"] = _svg(cut_mm, engrave_mm, layout, label)
-        _drawings.append({"name": name, "width": layout["width"], "height": layout["height"],
-                          "cut": cut_mm, "engrave": engrave_mm, "label": label})
-        output[name + ".dxf"] = _dxf(cut_mm, engrave_mm, label)
+        terrain.append((z, geometry, cut_mm, engrave, label))
         previous_geometry = geometry
         previous_z = z
+
+    buildings = project.get("buildings", [])
+    plates = [sheet[1] for sheet in terrain]
+    elevations = [sheet[0] for sheet in terrain]
+    surfaces = [
+        shapely.difference(lower, upper, grid_size=1e-4)
+        for lower, upper in zip(plates, plates[1:])
+    ] + [plates[-1]]
+    footprints = [Polygon(b["polygon"], b.get("holes", [])) for b in buildings]
+    numbers, checks = _terrain_numbers(footprints, surfaces, layout)
+    for b_num, (b, footprint) in enumerate(zip(buildings, footprints), 1):
+        base = b.get("base", elevations[0])
+        seat = stack_seat(base, elevations)
+        for upper_idx in range(seat + 1, len(plates)):
+            if shapely.intersection(footprint, plates[upper_idx], grid_size=1e-4).area > 0:
+                checks[seat].append(f"B{b_num}: 윗 지형판과 몸체가 겹침")
+                break
+    for index, (_, _, cut, engrave, label) in enumerate(terrain):
+        engrave_mm = [_mm(path, layout) for path in _exposed_engraving(engrave, surfaces[index])]
+        _save_sheet(output, f"plate_{index + 1:02d}", settings["thickness_mm"],
+                    cut, engrave_mm, layout, label, numbers[index], checks[index])
     if settings["building_mode"] in {"laser", "laser_floor"}:
-        output.update(_building_sheets(project.get("buildings", []), layout, settings))
+        output.update(_building_sheets(buildings, layout, settings))
+    _support_sheets(output, buildings, footprints, plates, elevations, bounds, layout, settings)
     return output
+
+
+def _support_sheets(output, buildings, footprints, plates, elevations, bounds, layout, settings):
+    """Fill unoccupied slabs up to each building's seating height."""
+    by_layer = {}
+    for number, (b, footprint) in enumerate(zip(buildings, footprints), 1):
+        base = b.get("base", elevations[0])
+        seat = stack_seat(base, elevations)
+        _, levels = building_support_plan(footprint, plates, seat=seat)
+        for ordinal, support in enumerate(levels, 1):
+            text = f"B{number}-{ordinal}" if len(levels) > 1 else f"B{number}"
+            parts = polygons(even_odd(support["cut"]))
+            by_layer.setdefault(support["layer"], []).extend((piece, text) for piece in parts)
+
+    frame = box(*bounds).boundary
+    thickness = settings["thickness_mm"]
+    for index, parts in sorted(by_layer.items()):
+        cut = [_mm(ring, layout) for piece, _ in parts for ring in rings(piece)]
+        cut_edges = shapely.unary_union([piece.boundary for piece, _ in parts], grid_size=1e-4)
+        guide = shapely.difference(frame, cut_edges, grid_size=1e-4)
+        engrave = [_mm(path, layout) for path in paths(guide)]
+        labels = []
+        checks = []
+        for piece, text in parts:
+            mark = _number_mark(piece, text, layout, fit=True)
+            if mark:
+                labels.append(mark)
+            if mark is None or mark[3] < .6:
+                checks.append(f"{text}: 받침 번호를 새길 공간이 좁음")
+        name = f"support_{index + 1:02d}"
+        label = f"BUILDING SUPPORTS | L{index + 1:02d} | t={thickness:g} mm | 1:{settings['scale']:g}"
+        _save_sheet(output, name, thickness, cut, engrave, layout, label, labels, checks)
 
 
 def _building_sheets(buildings, layout, settings):
     """Laser sheets for buildings: building i gets ceil(h_model / t) layers.
 
     Sheet k holds the footprint of every building taller than k layers, in
-    site position (same layout as the terrain plates) with its number
-    engraved, so pieces can be glued in place on the plates.
+    site position. Numbers go on covered layers, so roof faces stay clean.
     """
     scale = settings["scale"]
     per_floor = settings["building_mode"] == "laser_floor"
@@ -372,28 +529,15 @@ def _building_sheets(buildings, layout, settings):
                 continue
             rings = [b["polygon"], *b.get("holes", [])]
             cut.extend(_mm([list(p[:2]) for p in ring], layout) for ring in rings)
-            # a point guaranteed inside the piece (not in a courtyard)
-            rep = Polygon(b["polygon"], b.get("holes", [])).representative_point()
-            labels.append((_mm([[rep.x, rep.y]], layout)[0], f"B{number_}"))
+            if k < n - 1:
+                mark = _number_mark(Polygon(b["polygon"], b.get("holes", [])), f"B{number_}", layout)
+                if mark:
+                    labels.append(mark)
         label = (
-            f"BUILDINGS {'FLOOR' if per_floor else 'L'}{k + 1:02d} | 1:{scale:g} | t={t:.3g} mm | "
+            f"BUILDINGS {'FLOOR' if per_floor else 'L'}{k + 1:02d} | 1:{scale:g} | t={t:g} mm | "
             "glue on terrain | print 100%"
         )
-        name = f"building_{k + 1:02d}"
-        svg = _svg(cut, [], layout, label)
-        _drawings.append({"name": name, "width": layout["width"], "height": layout["height"],
-                          "cut": cut, "engrave": [], "label": label,
-                          "marks": [[x, y, t] for (x, y), t in labels]})
-        marks = "".join(
-            f'<text x="{x:.3f}" y="{layout["height"] - y:.3f}" font-size="1.6" '
-            f'text-anchor="middle" font-family="sans-serif" fill="#285cd2">{txt}</text>'
-            for (x, y), txt in labels
-        )
-        out[name + ".svg"] = svg.replace(
-            '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">',
-            '<g id="LABELS_NO_CUT" data-layer="LABELS_NO_CUT">' + marks, 1,
-        )
-        out[name + ".dxf"] = _dxf(cut, [], label, labels)
+        _save_sheet(out, f"building_{k + 1:02d}", t, cut, [], layout, label, labels)
     return out
 
 

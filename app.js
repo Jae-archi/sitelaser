@@ -1,5 +1,5 @@
-import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109p";
-import { Viewer3D } from "./viewer3d.js?v=20261109p";
+import { IGNMap, searchPlaces, fetchBuildings, fetchTerrain, toWGS84 } from "./ign.js?v=20261109x";
+import { Viewer3D } from "./viewer3d.js?v=20261109x";
 import {
   zipSync,
   strToU8
@@ -13,7 +13,7 @@ const PAPER_MM = {
   A3: [297, 420],
   A4: [210, 297]
 };
-const RHINO_BASE = "https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/";
+const RHINO_BASE = "https://cdn.jsdelivr.net/npm/rhino3dm@8.35.0/";
 
 let source = "ign";
 let project = null;
@@ -88,7 +88,7 @@ class PythonClient {
 
   createWorker() {
     if (this.worker) return;
-    const worker = new Worker(new URL("./worker.js?v=20261109p", import.meta.url));
+    const worker = new Worker(new URL("./worker.js?v=20261109x", import.meta.url));
     this.worker = worker;
 
     worker.onmessage = event => {
@@ -181,6 +181,7 @@ function settings() {
     interval_m: Number($("#interval").value),
     paper: $("#paper").value,
     orientation: $("#orientation").value,
+    paper_footer: $("#paper-footer").checked,
     ...($("#paper").value === "custom" ? {
       paper_width_mm: Number($("#paper-width").value),
       paper_height_mm: Number($("#paper-height").value)
@@ -233,29 +234,36 @@ $("#floor-height").addEventListener("change", () => {
   invalidate();
 });
 
-function availablePaper(config) {
-  let width, height;
+function paperSize(config) {
   if (config.paper === "custom") {
-    [width, height] = [config.paper_width_mm, config.paper_height_mm];
-  } else {
-    const dimensions = PAPER_MM[config.paper];
-    if (!dimensions) throw new Error("지원하지 않는 용지입니다.");
-    [width, height] = config.orientation === "landscape"
-      ? [dimensions[1], dimensions[0]] : dimensions;
+    return [config.paper_width_mm, config.paper_height_mm];
   }
-  // Same reserved space as the reference UI: 24 mm horizontal, 48 mm vertical.
-  return [width - 24, height - 48];
+  const dimensions = PAPER_MM[config.paper];
+  if (!dimensions) throw new Error("지원하지 않는 용지입니다.");
+  return config.orientation === "landscape" ? [dimensions[1], dimensions[0]] : dimensions;
 }
 
 function checkFit(bounds, config) {
-  const [width, height] = availablePaper(config);
-  const x = (bounds[2] - bounds[0]) * 1000 / config.scale;
-  const y = (bounds[3] - bounds[1]) * 1000 / config.scale;
-  return {
-    fits: x <= width + 1e-6 && y <= height + 1e-6,
-    text: `모형 ${x.toFixed(1)} × ${y.toFixed(1)} mm / ` +
-      `용지 크기 ${width} × ${height} mm`
-  };
+  const factor = 1000 / config.scale;
+  const x = (bounds[2] - bounds[0]) * factor;
+  const y = (bounds[3] - bounds[1]) * factor;
+  const model = `모형 ${x.toFixed(1)} × ${y.toFixed(1)} mm`;
+  if (config.paper === "site") {
+    const footer = config.paper_footer && x >= 50 ? 12 : 0;
+    const height = y + footer;
+    const fits = x <= 5000 && height <= 5000;
+    const format = value => Number(value.toFixed(3)).toLocaleString("ko-KR");
+    const detail = footer ? "하단 표기 여백 12 mm 포함"
+      : config.paper_footer ? "용지 폭 50 mm 미만은 하단 표기 생략" : "대지 범위 실치수";
+    const text = `맞춤 용지 ${format(x)} × ${format(height)} mm (${detail})`;
+    return { fits, text: text + (fits ? "" : " · 용지 한도 5,000 mm를 넘습니다. 축척 분모를 키우거나 대지 범위를 줄이세요.") };
+  }
+  // Matches the horizontal margins and the vertical margins + footer in sheets.py.
+  const horizontal = 24, vertical = 48;
+  const [width, height] = paperSize(config);
+  const fits = x <= width - horizontal + 1e-6 && y <= height - vertical + 1e-6;
+  const text = `${model} / 용지 ${width} × ${height} mm`;
+  return { fits, text: text + (fits ? "" : " · 용지의 사용 영역을 넘습니다. 대지 범위를 줄이거나 축척 분모를 키우세요.") };
 }
 
 function updateSettingsNotes() {
@@ -285,18 +293,21 @@ function updateSettingsNotes() {
 
   const note = $("#sheet-fit");
   if (!bounds || !(scale > 0)) {
-    note.textContent = "대지 범위와 축척을 정하면 용지 안에 들어가는지 표시됩니다.";
+    note.textContent = $("#paper").value === "site"
+      ? "대지 범위와 축척을 기준으로 맞춤 용지 크기를 정합니다."
+      : "대지 범위와 축척을 정하면 용지 안에 들어가는지 표시됩니다.";
     note.classList.remove("error");
     return;
   }
   const config = {
     scale, paper: $("#paper").value,
     orientation: $("#orientation").value,
+    paper_footer: $("#paper-footer").checked,
     paper_width_mm: Number($("#paper-width").value),
     paper_height_mm: Number($("#paper-height").value)
   };
   const fit = checkFit(bounds, config);
-  note.textContent = fit.text + (fit.fits ? "" : " · 용지보다 큽니다. 대지 범위를 줄이거나 축척 분모를 키우세요.");
+  note.textContent = fit.text;
   note.classList.toggle("error", !fit.fits);
 }
 
@@ -736,16 +747,17 @@ $("#select-none").onclick = () => ignMap.selectAll(false);
 
 // Custom paper: show width/height fields only when chosen.
 const syncPaper = () => {
-  const custom = $("#paper").value === "custom";
+  const paper = $("#paper").value;
+  const custom = paper === "custom";
+  const fixed = Object.hasOwn(PAPER_MM, paper);
   $("#paper-custom").hidden = !custom;
   $("#paper-width").disabled = $("#paper-height").disabled = !custom;
-  $("#orientation").disabled = custom;
-  // custom sizes are typed as width × height, so direction has no meaning
-  $("#orientation").closest("div").hidden = custom;
+  $("#orientation").disabled = !fixed;
+  $("#orientation").closest("div").hidden = !fixed;
 };
 $("#paper").addEventListener("change", syncPaper);
 syncPaper();
-for (const id of ["scale", "thickness", "interval", "paper", "orientation", "grid-step", "paper-width", "paper-height"]) {
+for (const id of ["scale", "thickness", "interval", "paper", "orientation", "grid-step", "paper-width", "paper-height", "paper-footer"]) {
   $("#" + id).addEventListener("input", () => {
     invalidate();
     updateSettingsNotes();
@@ -966,8 +978,7 @@ function validateSheets(files) {
   if (!names.length) throw new Error("생성된 지형판 파일이 없습니다.");
 
   for (const name of names) {
-    // plate_XX = terrain plates; building_XX = laser-cut building layers.
-    if (!/^(plate|building)_\d+\.(svg|dxf)$/.test(name) || typeof files[name] !== "string") {
+    if (!/^(plate|building|support)_\d+\.(svg|dxf)$/.test(name) || typeof files[name] !== "string") {
       throw new Error(`지형판 도면 파일이 올바르지 않습니다: ${name}`);
     }
   }
@@ -983,9 +994,10 @@ function validateSheets(files) {
   if (names.filter(name => name.endsWith(".dxf")).length !== svgNames.length) {
     throw new Error("SVG 도면과 DXF 도면의 개수가 일치하지 않습니다.");
   }
-  // terrain plates first, then building layers, each in number order
-  const key = n => (n.startsWith("building_") ? 1000 : 0) + Number(n.match(/\d+/)[0]);
-  return svgNames.sort((a, b) => key(a) - key(b));
+  const order = ["plate", "building", "support"];
+  const type = name => order.indexOf(name.split("_")[0]);
+  const number = name => Number(name.match(/\d+/)[0]);
+  return svgNames.sort((a, b) => type(a) - type(b) || number(a) - number(b));
 }
 
 function showPlate() {
@@ -1039,7 +1051,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
       }
 
       const fit = checkFit(ignMap.bounds, config);
-      if (!fit.fits) throw new Error(fit.text + " · 용지보다 큽니다. 대지 범위를 줄이거나 축척 분모를 키우세요.");
+      if (!fit.fits) throw new Error(fit.text);
 
       status("선택한 대지의 지형 높이를 불러오는 중");
       const terrain = await fetchTerrain(
@@ -1089,7 +1101,7 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     ensureCurrent();
     project = validateProject(result, config);
     const fit = checkFit(project.bounds, config);
-    if (!fit.fits) throw new Error(fit.text + " · 축척을 조정하세요.");
+    if (!fit.fits) throw new Error(fit.text);
 
     status("레이저 도면(SVG·DXF)을 만드는 중");
     sheetFiles = await python.call("sheets");
@@ -1097,12 +1109,13 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     const names = validateSheets(sheetFiles);
     const layers = [...project.layers].sort((a, b) => a.z - b.z);
 
-    $("#plate-select").replaceChildren(...names.map((name, ordinal) => {
+    $("#plate-select").replaceChildren(...names.map(name => {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = name.startsWith("building_")
-        ? `건물 판 ${Number(name.match(/\d+/)[0])}`
-        : `지형판 ${ordinal + 1} · 높이 ${layers[ordinal].z.toFixed(1)} m`;
+      const number = Number(name.match(/\d+/)[0]);
+      if (name.startsWith("support_")) option.textContent = `건물 받침 · 지형판 ${number}단`;
+      else if (name.startsWith("building_")) option.textContent = `건물 판 ${number}`;
+      else option.textContent = `지형판 ${number} · 높이 ${layers[number - 1].z.toFixed(1)} m`;
       return option;
     }));
     $("#plate-select").disabled = false;
@@ -1117,7 +1130,9 @@ $("#run").onclick = () => operation(async (signal, ensureCurrent) => {
     updateViewerOptions();
     showPlate();
     updateSettingsNotes();
-    status(`완성했습니다. 지형판 ${project.layers.length}장, 건물 ${project.buildings.length}개.${skippedNote}`);
+    const supports = names.filter(name => name.startsWith("support_")).length;
+    const supportNote = supports ? ` 받침 도면 ${supports}장.` : "";
+    status(`완성했습니다. 지형판 ${project.layers.length}장, 건물 ${project.buildings.length}개.${supportNote}${skippedNote}`);
     completedSteps.add(1);
     completedSteps.add(2);
     showStep(3, true);
@@ -1141,6 +1156,7 @@ function download(bytes, name) {
 
 $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   if (!project || !sheetFiles) throw new Error("먼저 모형을 만드세요.");
+  const formats = new Set([...document.querySelectorAll('[name="sheet-format"]:checked')].map(input => input.value));
   // Re-render the sheets with the chosen cut/engrave colours and line width.
   status("선 색상과 굵기를 적용하는 중");
   // send the project too: a restarted worker no longer holds it
@@ -1150,6 +1166,9 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
     line_width_mm: Number($("#line-width").value)
   } });
   ensureCurrent();
+  const drawings = await python.call("sheet_drawings");
+  ensureCurrent();
+  const supports = drawings.filter(drawing => drawing.name.startsWith("support_"));
   status("3DM과 ZIP 파일을 준비하는 중");
   const rhino = await rhinoEngine();
   ensureCurrent();
@@ -1160,9 +1179,22 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   ensureCurrent();
 
   const files = {};
-  for (const [name, content] of Object.entries(sheetFiles)) {
-    files[name] = strToU8(content);
+  for (const drawing of drawings) {
+    for (const format of ["svg", "dxf"]) {
+      if (formats.has(format)) {
+        files[`${drawingName(drawing)}.${format}`] = strToU8(sheetFiles[`${drawing.name}.${format}`]);
+      }
+    }
   }
+  if (formats.has("pdf")) await addSheetPdfs(files, drawings);
+  if (formats.has("3dm")) {
+    const response = await fetch(new URL("./rhino-text.3dm?v=20261109x", import.meta.url));
+    if (!response.ok) throw new Error("Rhino 도면 텍스트 양식을 불러오지 못했습니다.");
+    const template = new Uint8Array(await response.arrayBuffer());
+    files["sheets_2d.3dm"] = sheets2D3dm(rhino, drawings.filter(drawing => !supports.includes(drawing)), template);
+    if (supports.length) files["supports_2d.3dm"] = sheets2D3dm(rhino, supports, template);
+  }
+  ensureCurrent();
 
   const mode = project.settings.building_mode || "print";
   if (mode === "print_floor") {
@@ -1172,7 +1204,6 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
     if (stl) files["buildings.stl"] = stl;
   }
   files["model.3dm"] = viewer.export3DM(rhino);
-  files["sheets_2d.3dm"] = sheets2D3dm(rhino, await python.call("sheet_drawings"));
   files["project.json"] = strToU8(JSON.stringify(project, null, 2));
   files["model-coordinates.json"] = strToU8(
     JSON.stringify(viewer.exportMetadata(), null, 2)
@@ -1180,8 +1211,14 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
   files["README.txt"] = strToU8([
     "SiteLaser",
     "",
-    "plate_*.svg / plate_*.dxf: Python 엔진이 생성한 제작 도면.",
-    "model.3dm: 전체 지형판과 건물의 적층 모형. 단위 mm, Z 위.",
+    "terrain_번호_두께mm / building_번호_두께mm: 판별 제작 도면.",
+    "PDF는 용지 실치수입니다. 출력할 때 배율 100%를 선택하세요.",
+    "sheets_2d.3dm: 모든 판의 2D 제작 도면. 절단·각인·참고 글자 레이어를 분리했습니다.",
+    supports.length
+      ? "support_단번호_두께mm: 건물 아래 빈틈을 채우는 별도 받침 도면. 받침은 같은 번호의 지형판과 같은 높이에 놓습니다."
+      : "현재 건물 바닥 아래에 자동 생성할 받침 조각이 없습니다.",
+    "받침의 B 번호를 지형판 번호와 맞추세요. B27-1, B27-2는 아래에서 위로 쌓는 순서입니다.",
+    "model.3dm: 지형판과 건물의 닫힌 폴리서피스. 단위 mm, Z 위.",
     "buildings.stl: 건물만 포함. 단위 mm로 해석할 것. 건물이 없으면 생략.",
     "STL과 3DM은 동일한 조립 좌표를 사용합니다.",
     "project.json: 원본 좌표계의 Project JSON. 좌표와 높이는 m.",
@@ -1189,6 +1226,9 @@ $("#export").onclick = () => operation(async (_signal, ensureCurrent) => {
     "",
     "판의 바닥 높이 = 높이순 순번 × thickness_mm.",
     "건물 바닥 = base 이하 마지막 지형판의 윗면.",
+    "위 판에 덮이는 부분은 각인에서 제외합니다. 단차에 걸친 건물은 각 판의 노출 윤곽에 같은 B 번호를 표시합니다.",
+    "건물 판은 다음 판으로 덮이는 면에 B 번호를 표시합니다.",
+    ...drawings.flatMap(drawing => drawing.placement_checks.map(note => `${drawingName(drawing)} · ${note}`)),
     "건물 높이 = h × 1000 / scale.",
     "미리보기 숨김·레이어 슬라이더는 전체 모델 내보내기에 영향을 주지 않음.",
     "",
@@ -1608,10 +1648,60 @@ loadingOverlay = (() => {
 
 
 // One Rhino file with every 2D drawing laid out side by side (mm):
-// a parent layer per sheet with CUT / ENGRAVE / BORDER sub-layers.
-function sheets2D3dm(rhino, drawings) {
-  const file = new rhino.File3dm();
-  file.settings().modelUnitSystem = rhino.UnitSystem.Millimeters;
+function boardThickness(drawing) {
+  return Number(drawing.thickness_mm.toPrecision(6));
+}
+
+function drawingName(drawing) {
+  return `${drawing.name.replace(/^plate_/, "terrain_")}_${boardThickness(drawing)}mm`;
+}
+
+async function addSheetPdfs(files, drawings) {
+  const { jsPDF } = await import("https://cdn.jsdelivr.net/npm/jspdf@4.2.0/+esm");
+  for (const [prefix, kind] of [["plate_", "terrain"], ["building_", "building"], ["support_", "support"]]) {
+    const sheets = drawings.filter(drawing => drawing.name.startsWith(prefix));
+    if (!sheets.length) continue;
+    const pageSettings = ({ width, height }) => ({
+      format: [width, height],
+      orientation: width > height ? "landscape" : "portrait"
+    });
+    const pdf = new jsPDF({
+      unit: "mm",
+      compress: true,
+      putOnlyUsedFonts: true,
+      ...pageSettings(sheets[0])
+    });
+    pdf.setFont("helvetica");
+    for (const [index, drawing] of sheets.entries()) {
+      if (index) {
+        const { format, orientation } = pageSettings(drawing);
+        pdf.addPage(format, orientation);
+      }
+      const { cut, engrave, height, style, texts, cap_height_ratio } = drawing;
+      pdf.setLineWidth(style.line_width_mm);
+      for (const [paths, color] of [[cut, style.cut_color], [engrave, style.engrave_color]]) {
+        pdf.setDrawColor(color);
+        for (const points of paths) {
+          const [x, y] = points[0];
+          const segments = points.slice(1).map(([px, py], i) => [px - points[i][0], points[i][1] - py]);
+          pdf.lines(segments, x, height - y);
+        }
+      }
+      for (const [x, y, text, size, align, layer] of texts) {
+        pdf.setFontSize(size * 72 / (25.4 * cap_height_ratio));
+        pdf.setTextColor(layer === "ENGRAVE" ? style.engrave_color : "#25333b");
+        pdf.text(text, x, height - y, { align });
+      }
+    }
+    files[`${kind}_${boardThickness(sheets[0])}mm.pdf`] = new Uint8Array(pdf.output("arraybuffer"));
+  }
+}
+
+// The Rhino template supplies native Text entities for each alignment.
+function sheets2D3dm(rhino, drawings, template) {
+  const file = rhino.File3dm.fromByteArray(template);
+  if (!file) throw new Error("Rhino 도면 텍스트 양식을 열 수 없습니다.");
+  const textTemplates = {};
   const hex = h => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16), a: 255 });
   const addLayer = (name, color, parentId) => {
     const layer = new rhino.Layer();
@@ -1636,39 +1726,69 @@ function sheets2D3dm(rhino, drawings) {
   };
   const GAP = 50, PER_ROW = 4;
   let x = 0, y = 0, rowHeight = 0;
-  drawings.forEach((d, i) => {
-    if (i && i % PER_ROW === 0) { x = 0; y -= rowHeight + GAP; rowHeight = 0; }
-    const style = d.style || {};
-    const parent = addLayer(d.name, { r: 0, g: 0, b: 0, a: 255 });
-    const layers = {
-      CUT: addLayer("CUT", hex(style.cut_color || "#ff0000"), parent.id),
-      ENGRAVE: addLayer("ENGRAVE", hex(style.engrave_color || "#0000ff"), parent.id),
-      BORDER: addLayer("BORDER", { r: 160, g: 160, b: 160, a: 255 }, parent.id)
-    };
-    const add = (geometry, layer) => {
-      const attributes = new rhino.ObjectAttributes();
-      try {
-        attributes.layerIndex = layer.index;
-        file.objects().add(geometry, attributes);
-      } finally {
-        attributes.delete?.();
-        geometry.delete?.();
-      }
-    };
-    for (const path of d.cut) add(polyline(path, x, y), layers.CUT);
-    for (const path of d.engrave) add(polyline(path, x, y), layers.ENGRAVE);
-    const w = d.width, h = d.height;
-    add(polyline([[0, 0], [w, 0], [w, h], [0, h], [0, 0]], x, y), layers.BORDER);
-    add(new rhino.TextDot(d.label, [x + 12, y + 10, 0]), layers.BORDER);
-    for (const [mx, my, text] of d.marks || []) {
-      add(new rhino.TextDot(text, [x + mx, y + my, 0]), layers.BORDER);
-    }
-    x += w + GAP;
-    rowHeight = Math.max(rowHeight, h);
-  });
   try {
+    const objects = file.objects();
+    const templateIds = [];
+    for (let i = 0; i < objects.count; i++) {
+      const item = objects.get(i);
+      const attributes = item.attributes();
+      const geometry = item.geometry();
+      const text = geometry.duplicate();
+      textTemplates[attributes.name] = { text, style: file.dimstyles().findId(text.dimensionStyleId) };
+      templateIds.push(attributes.id);
+      geometry.delete();
+      attributes.delete();
+      item.delete();
+    }
+    for (const id of templateIds) objects.delete(id);
+    if (objects.count !== 0 || !textTemplates.left || !textTemplates.center || !textTemplates.right) {
+      throw new Error("Rhino 도면 텍스트 양식이 올바르지 않습니다.");
+    }
+    for (const [i, drawing] of drawings.entries()) {
+      if (i && i % PER_ROW === 0) {
+        x = 0;
+        y -= rowHeight + GAP;
+        rowHeight = 0;
+      }
+      const { cut, engrave, width, height, style, texts } = drawing;
+      const parent = addLayer(drawingName(drawing), { r: 0, g: 0, b: 0, a: 255 });
+      const layers = {
+        CUT: addLayer("CUT", hex(style.cut_color), parent.id),
+        ENGRAVE: addLayer("ENGRAVE", hex(style.engrave_color), parent.id),
+        BORDER: addLayer("BORDER", { r: 160, g: 160, b: 160, a: 255 }, parent.id),
+        LABELS_NO_CUT: addLayer("LABELS_NO_CUT", hex("#25333b"), parent.id)
+      };
+      const add = (geometry, layer) => {
+        const attributes = new rhino.ObjectAttributes();
+        try {
+          attributes.layerIndex = layer.index;
+          file.objects().add(geometry, attributes);
+        } finally {
+          attributes.delete();
+          geometry.delete();
+        }
+      };
+      for (const path of cut) add(polyline(path, x, y), layers.CUT);
+      for (const path of engrave) add(polyline(path, x, y), layers.ENGRAVE);
+      const border = [[0, 0], [width, 0], [width, height], [0, height], [0, 0]];
+      add(polyline(border, x, y), layers.BORDER);
+      for (const [tx, ty, value, size, align, layer] of texts) {
+        const source = textTemplates[align];
+        const text = source.text.duplicate();
+        text.setRichText(rhino.AnnotationBase.plainTextToRtf(value), source.style);
+        text.setTextHeight(source.style, size);
+        text.translate([x + tx, y + ty, 0]);
+        add(text, layers[layer]);
+      }
+      x += width + GAP;
+      rowHeight = Math.max(rowHeight, height);
+    }
     return file.toByteArray();
   } finally {
+    for (const { text, style } of Object.values(textTemplates)) {
+      text.delete();
+      style.delete();
+    }
     file.delete?.();  // free the WASM document after writing
   }
 }
@@ -1706,9 +1826,13 @@ function sheets2D3dm(rhino, drawings) {
   if (listEl) list.append(listEl);
   panel.append(list);
   side.querySelector(".building-tools")?.remove();
-  // "대지 범위 ›" re-centres the map, so it lives on the map itself
+  // Keep map navigation separate from clicks and drawing on the map.
   const rangeView = $("#range-view");
-  if (rangeView) { rangeView.classList.add("map-corner-btn"); map.append(rangeView); }
+  if (rangeView) {
+    rangeView.classList.add("map-corner-btn", "leaflet-control");
+    L.DomEvent.disableClickPropagation(rangeView);
+    map.append(rangeView);
+  }
   // the long "지도를 눌러…" hint is shown only for notices
   const mapNote = $("#map-note");
   if (mapNote) mapNote.textContent = "";
